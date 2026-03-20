@@ -15,6 +15,7 @@
       in
       {
         devShells.default = pkgs.mkShell {
+          name = "devcontainer-env";
           packages = with pkgs; [
             cargo
             clippy
