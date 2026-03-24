@@ -17,6 +17,18 @@ pub struct Program {
     pub command: ProgramCommand,
 }
 
+/// ProgramArgs holds the shared global flags available to every subcommand.
+#[derive(Debug, Args)]
+pub struct ProgramArgs {
+    /// Path to the devcontainer.json configuration file.
+    #[arg(help = "devcontainer.json path.", long)]
+    pub config: Option<PathBuf>,
+
+    /// Path to the workspace folder containing the devcontainer.
+    #[arg(help = "Workspace folder path.", long)]
+    pub workspace_folder: Option<PathBuf>,
+}
+
 /// Top-level subcommand dispatched by [`Program`].
 #[derive(Debug, Subcommand)]
 pub enum ProgramCommand {
@@ -38,18 +50,6 @@ pub enum ProgramCommand {
         long_about = "Inject the resolved devcontainer service environment—rewriting container URLs to host ports—into the current process environment, then exec the given command so it inherits that environment."
     )]
     Exec(ExecCommandArgs),
-}
-
-/// ProgramArgs holds the shared global flags available to every subcommand.
-#[derive(Debug, Args)]
-pub struct ProgramArgs {
-    /// Path to the devcontainer.json configuration file.
-    #[arg(help = "devcontainer.json path.", long)]
-    pub config: Option<PathBuf>,
-
-    /// Path to the workspace folder containing the devcontainer.
-    #[arg(help = "Workspace folder path.", long)]
-    pub workspace_folder: Option<PathBuf>,
 }
 
 /// InspectCommandArgs defines the arguments for the InspectCommand.
