@@ -2,10 +2,12 @@
   "$schema": "https://raw.githubusercontent.com/devcontainers/spec/refs/heads/main/schemas/devContainer.base.schema.json",
   "name": "devcontainer-env",
   "image": "mcr.microsoft.com/devcontainers/base:bookworm",
-  "workspaceFolder": "/workspaces/devcontainer-env",
-  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/devcontainer-env,type=bind",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+  "mounts": [
+    "source=${localWorkspaceFolderBasename}-nix,target=/nix,type=volume",
+    "source=${localWorkspaceFolderBasename}-cache,target=/home/vscode/.cache,type=volume"
+  ],
   "features": {
-    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
     "ghcr.io/devcontainers/features/nix:1": {
       "extraNixConfig": "experimental-features = nix-command flakes"
     }

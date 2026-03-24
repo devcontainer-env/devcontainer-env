@@ -1,0 +1,17 @@
+{
+  "$schema": "https://raw.githubusercontent.com/devcontainers/spec/refs/heads/main/schemas/devContainer.base.schema.json",
+  "name": "Go + PostgreSQL",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspaces/demo",
+  "features": {
+    "ghcr.io/devcontainers/features/go:1": {}
+  },
+  "forwardPorts": [5432],
+  "portsAttributes": {
+    "5432": {
+      "label": "PostgreSQL",
+      "onAutoForward": "silent"
+    }
+  }
+}
