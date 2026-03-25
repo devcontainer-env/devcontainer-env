@@ -1,8 +1,9 @@
 use crate::app::cli::*;
 use crate::oci::api::*;
 use anyhow::Result;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::io::Write;
+use std::process::{Command, Stdio};
 
 /// Export devcontainer service environment variables with container URLs rewritten to host ports.
 pub struct ExportCommand {
@@ -37,6 +38,46 @@ impl ExportCommand {
         }
 
         Ok(())
+    }
+}
+pub struct ExecCommand {
+    /// Client used to retrieve the workspace and its environment.
+    pub client: Box<dyn WorkspaceClient + Send + Sync>,
+}
+
+impl ExecCommand {
+    /// Execute the ExecCommand with the provided arguments.
+    pub async fn execute(&mut self, args: &ExecCommandArgs) -> Result<()> {
+        // Get the workspace
+        let params = &GetWorkspaceParam {
+            config: args.parent.config.clone(),
+            folder: args.parent.workspace_folder.clone(),
+        };
+        let workspace = self.client.get_workspace(params).await?;
+        let mut arguments = VecDeque::from(args.command.clone());
+        let environment: HashMap<String, String> = VariableVec(workspace.environment).into();
+
+        // Prepare the command
+        let name = match arguments.pop_front() {
+            Some(value) => value,
+            None => String::from("sh"),
+        };
+
+        // Execute the command
+        let status = Command::new(name)
+            .args(arguments)
+            .envs(&environment)
+            .stdout(Stdio::inherit())
+            .stdin(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .spawn()?
+            .wait()?;
+
+        if status.success() {
+            Ok(())
+        } else {
+            anyhow::bail!("command exited with status {}", status);
+        }
     }
 }
 
@@ -82,7 +123,7 @@ mod tests {
                     config,
                     containers: vec![],
                     environment: vec![Variable {
-                        key: String::from("FOO_VAR"),
+                        key: String::from("FAKE_VAR"),
                         value: String::from("brown-fox"),
                     }],
                 })
@@ -93,7 +134,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn exports_environment_for_bash() -> Result<()> {
+    async fn export_environment_for_bash() -> Result<()> {
         let client = setup();
         let writer = Writer::new();
         let reader = writer.clone();
@@ -111,13 +152,13 @@ mod tests {
         command.execute(&args).await?;
 
         let output = String::from_utf8(reader.contents()).unwrap();
-        assert_eq!(output, "export FOO_VAR=brown-fox\n");
+        assert_eq!(output, "export FAKE_VAR=brown-fox\n");
 
         Ok(())
     }
 
     #[tokio::test]
-    async fn exports_environment_as_json() -> Result<()> {
+    async fn export_environment_as_json() -> Result<()> {
         let client = setup();
         let writer = Writer::new();
         let reader = writer.clone();
@@ -135,7 +176,7 @@ mod tests {
         command.execute(&args).await?;
 
         let output = String::from_utf8(reader.contents()).unwrap();
-        assert_eq!(output, "{\"FOO_VAR\":\"brown-fox\"}\n");
+        assert_eq!(output, "{\"FAKE_VAR\":\"brown-fox\"}\n");
 
         Ok(())
     }
@@ -160,6 +201,79 @@ mod tests {
 
         let result = command.execute(&args).await;
         assert_eq!(result.unwrap_err().to_string(), "oh no", "expected error");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn exec_command() -> Result<()> {
+        let client = setup();
+
+        let mut command = ExecCommand {
+            client: Box::new(client),
+        };
+
+        let args = ExecCommandArgs {
+            parent: ProgramArgs::default(),
+            command: vec![
+                String::from("sh"),
+                String::from("-c"),
+                String::from(r#"[ "$FAKE_VAR" = "brown-fox" ]"#),
+                String::from("exit 0"),
+            ],
+        };
+
+        let result = command.execute(&args).await;
+        assert!(result.is_ok(), "expected success");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn exec_command_fails() -> Result<()> {
+        let mut client = MockClient::new();
+        client
+            .expect_get_workspace()
+            .return_once(|_| Box::pin(async move { Err(anyhow::anyhow!("oh no")) }));
+
+        let mut command = ExecCommand {
+            client: Box::new(client),
+        };
+
+        let args = ExecCommandArgs {
+            parent: ProgramArgs::default(),
+            command: vec![String::from("sh")],
+        };
+
+        let result = command.execute(&args).await;
+        assert_eq!(result.unwrap_err().to_string(), "oh no", "expected error");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn exec_command_fails_with_status() -> Result<()> {
+        let client = setup();
+
+        let mut command = ExecCommand {
+            client: Box::new(client),
+        };
+
+        let args = ExecCommandArgs {
+            parent: ProgramArgs::default(),
+            command: vec![
+                String::from("sh"),
+                String::from("-c"),
+                String::from("exit 1"),
+            ],
+        };
+
+        let result = command.execute(&args).await;
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "command exited with status exit status: 1",
+            "expected error"
+        );
 
         Ok(())
     }
