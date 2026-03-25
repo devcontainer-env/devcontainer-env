@@ -21,6 +21,23 @@ pub struct Workspace {
     pub environment: Vec<Variable>,
 }
 
+impl std::fmt::Display for Workspace {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Workspace: {}", self.folder.display())?;
+        writeln!(f)?;
+        writeln!(f, "Containers:")?;
+        for container in &self.containers {
+            writeln!(f, "{container}")?;
+        }
+        writeln!(f)?;
+        writeln!(f, "Environment:")?;
+        for var in &self.environment {
+            writeln!(f, "  {var}")?;
+        }
+        Ok(())
+    }
+}
+
 /// A single environment variable as a key-value pair.
 #[derive(Debug)]
 pub struct Variable {
@@ -28,6 +45,12 @@ pub struct Variable {
     pub key: String,
     /// The variable value.
     pub value: String,
+}
+
+impl std::fmt::Display for Variable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} = {}", self.key, self.value)
+    }
 }
 
 /// A newtype wrapper around a [`Vec<Variable>`] that supports conversion into a [`HashMap`].
@@ -50,6 +73,15 @@ pub struct Container {
     pub ports: Vec<PortMapping>,
 }
 
+impl std::fmt::Display for Container {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "  {}", self.name)?;
+        writeln!(f, "    Image: {}", self.image)?;
+        let ports: Vec<String> = self.ports.iter().map(|p| p.to_string()).collect();
+        write!(f, "    Ports: {}", ports.join(", "))
+    }
+}
+
 /// Describes a single port mapping between a container port and a host port.
 #[derive(Debug)]
 pub struct PortMapping {
@@ -59,6 +91,12 @@ pub struct PortMapping {
     pub host_port: u16,
     /// Transport protocol (e.g. `"tcp"` or `"udp"`).
     pub protocol: String,
+}
+
+impl std::fmt::Display for PortMapping {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} → {}", self.container_port, self.host_port)
+    }
 }
 
 /// Parameters for [`Client::get_workspace`].
@@ -130,5 +168,48 @@ impl WorkspaceClient for Client {
             containers,
             environment,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anyhow::Result;
+
+    #[test]
+    fn workspace_displays_as_text() -> Result<()> {
+        let workspace = Workspace {
+            folder: PathBuf::from("/workspace"),
+            config: PathBuf::from(".devcontainer/devcontainer.json"),
+            containers: vec![Container {
+                name: "devcontainer-app-1".to_string(),
+                image: "mcr.microsoft.com/devcontainers/rust:latest".to_string(),
+                ports: vec![PortMapping {
+                    container_port: 8080,
+                    host_port: 8080,
+                    protocol: "tcp".to_string(),
+                }],
+            }],
+            environment: vec![Variable {
+                key: String::from("FAKE_VAR"),
+                value: String::from("foo-bar"),
+            }],
+        };
+
+        let expected = indoc::indoc! {"
+        Workspace: /workspace
+
+        Containers:
+          devcontainer-app-1
+            Image: mcr.microsoft.com/devcontainers/rust:latest
+            Ports: 8080 → 8080
+
+        Environment:
+          FAKE_VAR = foo-bar
+       "};
+
+        assert_eq!(format!("{}", workspace), expected);
+
+        Ok(())
     }
 }
