@@ -20,8 +20,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let mut command = ExecCommand { client };
             command.execute(&args).await?
         }
-        ProgramCommand::Inspect(_) => {
-            todo!()
+        ProgramCommand::Inspect(args) => {
+            let writer = Box::new(std::io::stdout());
+            let mut command = InspectCommand { client, writer };
+            command.execute(&args).await?
         }
         ProgramCommand::Export(args) => {
             let writer = Box::new(std::io::stdout());

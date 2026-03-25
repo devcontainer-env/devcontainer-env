@@ -81,6 +81,29 @@ impl ExecCommand {
     }
 }
 
+pub struct InspectCommand {
+    /// Writer used to output the exported environment variables.
+    pub writer: Box<dyn Write>,
+    /// Client used to retrieve the workspace and its environment.
+    pub client: Box<dyn WorkspaceClient + Send + Sync>,
+}
+
+impl InspectCommand {
+    /// Execute the ExecCommand with the provided arguments.
+    pub async fn execute(&mut self, args: &InspectCommandArgs) -> Result<()> {
+        // Get the workspace
+        let params = &GetWorkspaceParam {
+            config: args.parent.config.clone(),
+            folder: args.parent.workspace_folder.clone(),
+        };
+        let workspace = self.client.get_workspace(params).await?;
+        // Write the workspace
+        writeln!(self.writer, "{}", workspace)?;
+
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -197,6 +220,62 @@ mod tests {
         let args = ExportCommandArgs {
             parent: ProgramArgs::default(),
             format: ExportFormat::Json,
+        };
+
+        let result = command.execute(&args).await;
+        assert_eq!(result.unwrap_err().to_string(), "oh no", "expected error");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn inspect_workspace() -> Result<()> {
+        let client = setup();
+        let writer = Writer::new();
+        let reader = writer.clone();
+
+        let mut command = InspectCommand {
+            writer: Box::new(writer),
+            client: Box::new(client),
+        };
+
+        let args = InspectCommandArgs {
+            parent: ProgramArgs::default(),
+        };
+
+        command.execute(&args).await?;
+
+        let expected = indoc::indoc! {"
+        Workspace: .
+
+        Containers:
+
+        Environment:
+          FAKE_VAR = brown-fox
+
+        "};
+
+        let output = String::from_utf8(reader.contents()).unwrap();
+        assert_eq!(output, expected);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn inspect_workspace_fails() -> Result<()> {
+        let mut client = MockClient::new();
+        client
+            .expect_get_workspace()
+            .return_once(|_| Box::pin(async move { Err(anyhow::anyhow!("oh no")) }));
+        let writer = Writer::new();
+
+        let mut command = InspectCommand {
+            writer: Box::new(writer),
+            client: Box::new(client),
+        };
+
+        let args = InspectCommandArgs {
+            parent: ProgramArgs::default(),
         };
 
         let result = command.execute(&args).await;
