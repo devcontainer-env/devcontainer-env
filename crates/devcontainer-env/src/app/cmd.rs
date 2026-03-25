@@ -6,8 +6,10 @@ use std::io::Write;
 
 /// Export devcontainer service environment variables with container URLs rewritten to host ports.
 pub struct ExportCommand {
-    pub client: Box<dyn WorkspaceClient + Send + Sync>,
+    /// Writer used to output the exported environment variables.
     pub writer: Box<dyn Write>,
+    /// Client used to retrieve the workspace and its environment.
+    pub client: Box<dyn WorkspaceClient + Send + Sync>,
 }
 
 impl ExportCommand {
@@ -144,10 +146,10 @@ mod tests {
         client
             .expect_get_workspace()
             .return_once(|_| Box::pin(async move { Err(anyhow::anyhow!("oh no")) }));
+        let writer = Writer::new();
 
-        let buffer = Vec::new();
         let mut command = ExportCommand {
-            writer: Box::new(buffer),
+            writer: Box::new(writer),
             client: Box::new(client),
         };
 
