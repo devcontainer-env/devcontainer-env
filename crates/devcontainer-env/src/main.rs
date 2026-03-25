@@ -16,8 +16,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let program = Program::parse();
     // Process the correct command
     match program.command {
-        ProgramCommand::Exec(_) => {
-            todo!()
+        ProgramCommand::Exec(args) => {
+            let mut command = ExecCommand { client };
+            command.execute(&args).await?
         }
         ProgramCommand::Inspect(_) => {
             todo!()
