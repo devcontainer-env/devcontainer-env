@@ -1,9 +1,33 @@
 mod app;
+mod oci;
+
+use std::error::Error;
 
 use crate::app::cli::*;
+use crate::app::cmd::*;
+use crate::oci::api::*;
+
 use clap::Parser;
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    let client = Box::new(Client::new()?);
+
     let program = Program::parse();
-    println!("{:?}", program);
+    // Process the correct command
+    match program.command {
+        ProgramCommand::Exec(_) => {
+            todo!()
+        }
+        ProgramCommand::Inspect(_) => {
+            todo!()
+        }
+        ProgramCommand::Export(args) => {
+            let writer = Box::new(std::io::stdout());
+            let mut command = ExportCommand { client, writer };
+            command.execute(&args).await?
+        }
+    }
+
+    Ok(())
 }
