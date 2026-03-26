@@ -130,19 +130,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn export_format_displays_as_bash() {
+    fn export_format_bash_displays_as_bash() {
         let output = ExportFormat::Bash;
-        assert_eq!(output.to_string(), "bash")
+        assert_eq!(output.to_string(), "bash");
     }
 
     #[test]
-    fn export_format_displays_as_json() {
+    fn export_format_json_displays_as_json() {
         let output = ExportFormat::Json;
-        assert_eq!(output.to_string(), "json")
+        assert_eq!(output.to_string(), "json");
     }
 
     #[test]
-    fn program_args_defaults() {
+    fn program_args_default_folder_and_config() {
         let args = ProgramArgs::default();
         assert_eq!(args.workspace_folder, Path::new("."));
         assert_eq!(args.config, Path::new(".devcontainer/devcontainer.json"));
