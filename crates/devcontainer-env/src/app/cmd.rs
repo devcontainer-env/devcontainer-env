@@ -31,7 +31,7 @@ impl ExportCommand {
                 }
             }
             ExportFormat::Json => {
-                let environment: HashMap<String, String> = VariableVec(workspace.variables).into();
+                let environment: HashMap<String, String> = VecVariable(workspace.variables).into();
                 writeln!(self.writer, "{}", serde_json::to_string(&environment)?)?;
             }
         }
@@ -54,7 +54,7 @@ impl ExecCommand {
         };
         let workspace = self.client.get_workspace(params).await?;
         let mut arguments = VecDeque::from(args.command.clone());
-        let environment: HashMap<String, String> = VariableVec(workspace.variables).into();
+        let environment: HashMap<String, String> = VecVariable(workspace.variables).into();
 
         // Prepare the command
         let name = match arguments.pop_front() {

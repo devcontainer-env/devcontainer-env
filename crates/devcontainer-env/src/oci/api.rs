@@ -66,10 +66,10 @@ impl std::fmt::Display for Variable {
 }
 
 /// A newtype wrapper around a [`Vec<Variable>`] that supports conversion into a [`HashMap`].
-pub struct VariableVec(pub Vec<Variable>);
+pub struct VecVariable(pub Vec<Variable>);
 
-impl From<VariableVec> for HashMap<String, String> {
-    fn from(vars: VariableVec) -> Self {
+impl From<VecVariable> for HashMap<String, String> {
+    fn from(vars: VecVariable) -> Self {
         vars.0.into_iter().map(|var| (var.key, var.value)).collect()
     }
 }
