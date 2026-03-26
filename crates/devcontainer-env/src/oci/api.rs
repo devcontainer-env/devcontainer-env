@@ -110,7 +110,7 @@ impl std::fmt::Display for Container {
 
 impl From<bollard::plugin::ContainerSummary> for Container {
     fn from(summary: bollard::plugin::ContainerSummary) -> Self {
-        Self {
+        let mut container = Self {
             names: summary.names.unwrap(),
             image: summary.image.unwrap(),
             hosts: summary
@@ -127,7 +127,19 @@ impl From<bollard::plugin::ContainerSummary> for Container {
                 .iter()
                 .map(|p| p.clone().into())
                 .collect(),
+        };
+
+        if let Some(labels) = summary.labels {
+            let service = labels.get("com.docker.compose.service").cloned();
+            // We consider the service name as the main host.
+            if let Some(name) = service {
+                if !container.hosts.contains(&name) {
+                    container.hosts.insert(0, name);
+                }
+            }
         }
+
+        container
     }
 }
 
