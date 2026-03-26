@@ -154,6 +154,7 @@ mod tests {
                     containers: vec![Container {
                         names: vec!["devcontainer-app-1".to_string()],
                         image: "mcr.microsoft.com/devcontainers/rust:latest".to_string(),
+                        hosts: vec!["my-host".to_string()],
                         ports: vec![PortMapping {
                             host_ip: "127.0.0.1".to_string(),
                             host_port: 8080,
@@ -267,6 +268,7 @@ mod tests {
         Containers:
           devcontainer-app-1
             Image: mcr.microsoft.com/devcontainers/rust:latest
+            Hosts: my-host
             Ports: 8080 → 127.0.0.1:8080
 
         Environment:

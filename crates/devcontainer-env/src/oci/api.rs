@@ -28,14 +28,17 @@ impl std::fmt::Display for Workspace {
         if !self.containers.is_empty() {
             writeln!(f)?;
             writeln!(f, "Containers:")?;
-            for container in &self.containers {
-                writeln!(f, "{container}")?;
-                writeln!(f)?;
-            }
-            if !self.variables.is_empty() {
-                if self.containers.is_empty() {
+
+            let mut iter = self.containers.iter().peekable();
+            // We should print the containers separated by new line.
+            while let Some(container) = iter.next() {
+                write!(f, "{container}")?;
+                // Do not write new line if we are the last container.
+                if iter.peek().is_some() || !self.variables.is_empty() {
                     writeln!(f)?;
                 }
+            }
+            if !self.variables.is_empty() {
                 writeln!(f, "Environment:")?;
                 for var in &self.variables {
                     writeln!(f, "  {var}")?;
@@ -78,6 +81,8 @@ pub struct Container {
     pub names: Vec<String>,
     /// Image name used to create the container.
     pub image: String,
+    /// Container host list.
+    pub hosts: Vec<String>,
     /// Port mappings exposed by this container.
     pub ports: Vec<PortMapping>,
 }
@@ -90,11 +95,13 @@ impl std::fmt::Display for Container {
             .map(|n| n.trim_start_matches('/').to_string())
             .collect();
         writeln!(f, "  {}", names.join(", "))?;
-        write!(f, "    Image: {}", self.image)?;
+        writeln!(f, "    Image: {}", self.image)?;
+        if !self.hosts.is_empty() {
+            writeln!(f, "    Hosts: {}", self.hosts.join(", "))?;
+        }
         if !self.ports.is_empty() {
-            writeln!(f)?;
             let ports: Vec<String> = self.ports.iter().map(|p| p.to_string()).collect();
-            write!(f, "    Ports: {}", ports.join(", "))?;
+            writeln!(f, "    Ports: {}", ports.join(", "))?;
         }
 
         Ok(())
@@ -106,6 +113,14 @@ impl From<bollard::plugin::ContainerSummary> for Container {
         Self {
             names: summary.names.unwrap(),
             image: summary.image.unwrap(),
+            hosts: summary
+                .network_settings
+                .unwrap_or_default()
+                .networks
+                .unwrap_or_default()
+                .values()
+                .flat_map(|endpoint| endpoint.dns_names.clone().unwrap_or_default())
+                .collect(),
             ports: summary
                 .ports
                 .unwrap_or_default()
@@ -138,7 +153,7 @@ impl From<ContainerFilters> for bollard::query_parameters::ListContainersOptions
         );
         bollard::query_parameters::ListContainersOptionsBuilder::new()
             .filters(&predicate)
-            .all(true)
+            .all(false)
             .build()
     }
 }
@@ -245,16 +260,30 @@ impl<D: DockerClient + Send + Sync> WorkspaceClient for Client<D> {
         let variables = Vec::new();
         let mut containers = Vec::new();
 
-        let filters = ContainerFilters(vec![ContainerFilter {
-            name: String::from("devcontainer.local_folder"),
-            value: format!("{}", folder.display()),
-        }]);
+        let filters = vec![
+            ContainerFilter {
+                name: String::from("com.docker.compose.project.working_dir"),
+                value: format!("{}", config.parent().unwrap().display()),
+            },
+            ContainerFilter {
+                name: String::from("devcontainer.local_folder"),
+                value: format!("{}", folder.display()),
+            },
+        ];
 
-        // List the main containers
-        let collection = self.client.list_containers(Some(filters.into())).await?;
-        // Transform the collection
-        for item in collection {
-            containers.push(item.into());
+        for filter in filters {
+            // Prepare the options
+            let opts = Some(ContainerFilters(vec![filter]).into());
+            // List the main containers
+            let collection = self.client.list_containers(opts).await?;
+            // Transform the collection
+            for item in collection {
+                containers.push(item.into());
+            }
+            // We should stop
+            if !containers.is_empty() {
+                break;
+            }
         }
 
         Ok(Workspace {
@@ -364,7 +393,6 @@ mod tests {
               devcontainer-app-1
                 Image: mcr.microsoft.com/devcontainers/rust:latest
                 Ports: 8080 → 127.0.0.1:8080
-
             ",
             folder = WORKSPACE_FOLDER.display()
         };
