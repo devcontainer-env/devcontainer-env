@@ -503,9 +503,6 @@ mod tests {
               devcontainer-app-1
                 Image: mcr.microsoft.com/devcontainers/rust:latest
                 Ports: 8080 → 127.0.0.1:8080
-
-            Environment:
-              DATABASE_URL = postgres://db:5432/postgres
             ",
             folder = WORKSPACE_FOLDER.display()
         };
