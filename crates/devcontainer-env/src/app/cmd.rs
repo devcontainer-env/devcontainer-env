@@ -124,8 +124,8 @@ mod tests {
             Self(Arc::new(Mutex::new(Vec::new())))
         }
 
-        fn contents(&self) -> Vec<u8> {
-            self.0.lock().unwrap().clone()
+        fn contents(&self) -> String {
+            String::from_utf8(self.0.lock().unwrap().clone()).unwrap()
         }
     }
 
@@ -140,129 +140,111 @@ mod tests {
         }
     }
 
-    fn setup() -> MockWorkspaceClient {
-        let mut client = MockWorkspaceClient::new();
-        // Mock the get_workspace method.
-        client.expect_get_workspace().return_once(|params| {
-            let folder = params.folder.clone();
-            let config = params.config.clone();
-
-            Box::pin(async move {
-                Ok(Workspace {
-                    folder,
-                    config,
-                    containers: vec![Container {
-                        names: vec!["devcontainer-app-1".to_string()],
-                        image: "mcr.microsoft.com/devcontainers/rust:latest".to_string(),
-                        hosts: vec!["my-host".to_string()],
-                        ports: vec![PortMapping {
-                            host_ip: "127.0.0.1".to_string(),
-                            host_port: 8080,
-                            container_port: 8080,
-                            protocol: "tcp".to_string(),
-                        }],
-                    }],
-                    variables: vec![Variable {
-                        key: String::from("FAKE_VAR"),
-                        value: String::from("brown-fox"),
-                    }],
-                })
-            })
-        });
-
-        client
+    fn workspace() -> Workspace {
+        Workspace {
+            folder: ".".into(),
+            config: ".devcontainer/devcontainer.json".into(),
+            containers: vec![Container {
+                id: "001".to_string(),
+                names: vec!["devcontainer-app-1".to_string()],
+                image: "mcr.microsoft.com/devcontainers/rust:latest".to_string(),
+                hosts: vec!["my-host".to_string()],
+                ports: vec![PortMapping {
+                    host_ip: "127.0.0.1".to_string(),
+                    host_port: 8080,
+                    container_port: 8080,
+                    protocol: "tcp".to_string(),
+                }],
+            }],
+            variables: vec![Variable {
+                key: String::from("FAKE_VAR"),
+                value: String::from("brown-fox"),
+            }],
+        }
     }
 
-    #[tokio::test]
-    async fn export_environment_for_bash() -> Result<()> {
-        let client = setup();
-        let writer = Writer::new();
-        let reader = writer.clone();
-
-        let mut command = ExportCommand {
-            writer: Box::new(writer),
-            client: Box::new(client),
-        };
-
-        let args = ExportCommandArgs {
-            parent: ProgramArgs::default(),
-            format: ExportFormat::Bash,
-        };
-
-        command.execute(&args).await?;
-
-        let output = String::from_utf8(reader.contents()).unwrap();
-        assert_eq!(output, "export FAKE_VAR=brown-fox\n");
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn export_environment_as_json() -> Result<()> {
-        let client = setup();
-        let writer = Writer::new();
-        let reader = writer.clone();
-
-        let mut command = ExportCommand {
-            writer: Box::new(writer),
-            client: Box::new(client),
-        };
-
-        let args = ExportCommandArgs {
-            parent: ProgramArgs::default(),
-            format: ExportFormat::Json,
-        };
-
-        command.execute(&args).await?;
-
-        let output = String::from_utf8(reader.contents()).unwrap();
-        assert_eq!(output, "{\"FAKE_VAR\":\"brown-fox\"}\n");
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn export_environment_fails() -> Result<()> {
-        let mut client = MockWorkspaceClient::new();
+    fn expect_get_workspace(client: &mut MockWorkspaceClient, res: Result<Workspace>) {
         client
             .expect_get_workspace()
-            .return_once(|_| Box::pin(async move { Err(anyhow::anyhow!("oh no")) }));
-        let writer = Writer::new();
+            .return_once(|_| Box::pin(async move { res }));
+    }
 
-        let mut command = ExportCommand {
-            writer: Box::new(writer),
+    #[tokio::test]
+    async fn export_writes_bash_export_statements() -> Result<()> {
+        let writer = Writer::new();
+        let mut client = MockWorkspaceClient::new();
+        expect_get_workspace(&mut client, Ok(workspace()));
+        let mut cmd = ExportCommand {
+            writer: Box::new(writer.clone()),
             client: Box::new(client),
         };
 
-        let args = ExportCommandArgs {
+        cmd.execute(&ExportCommandArgs {
             parent: ProgramArgs::default(),
-            format: ExportFormat::Json,
-        };
+            format: ExportFormat::Bash,
+        })
+        .await?;
 
-        let result = command.execute(&args).await;
-        assert_eq!(result.unwrap_err().to_string(), "oh no", "expected error");
-
+        assert_eq!(writer.contents(), "export FAKE_VAR=brown-fox\n");
         Ok(())
     }
 
     #[tokio::test]
-    async fn inspect_workspace() -> Result<()> {
-        let args = InspectCommandArgs {
-            parent: ProgramArgs::default(),
-        };
-
-        let client = setup();
+    async fn export_writes_json_object() -> Result<()> {
         let writer = Writer::new();
-        let reader = writer.clone();
-        // Prepare the command
-        let mut command = InspectCommand {
-            writer: Box::new(writer),
+        let mut client = MockWorkspaceClient::new();
+        expect_get_workspace(&mut client, Ok(workspace()));
+        let mut cmd = ExportCommand {
+            writer: Box::new(writer.clone()),
             client: Box::new(client),
         };
 
-        command.execute(&args).await?;
-        let output = String::from_utf8(reader.contents()).unwrap();
-        let workspace = indoc::indoc! {"
+        cmd.execute(&ExportCommandArgs {
+            parent: ProgramArgs::default(),
+            format: ExportFormat::Json,
+        })
+        .await?;
+
+        assert_eq!(writer.contents(), "{\"FAKE_VAR\":\"brown-fox\"}\n");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn export_fails_when_client_errors() -> Result<()> {
+        let mut client = MockWorkspaceClient::new();
+        expect_get_workspace(&mut client, Err(anyhow::anyhow!("oh no")));
+        let mut cmd = ExportCommand {
+            writer: Box::new(Writer::new()),
+            client: Box::new(client),
+        };
+
+        let result = cmd
+            .execute(&ExportCommandArgs {
+                parent: ProgramArgs::default(),
+                format: ExportFormat::Json,
+            })
+            .await;
+
+        assert_eq!(result.unwrap_err().to_string(), "oh no");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn inspect_writes_workspace_display() -> Result<()> {
+        let writer = Writer::new();
+        let mut client = MockWorkspaceClient::new();
+        expect_get_workspace(&mut client, Ok(workspace()));
+        let mut cmd = InspectCommand {
+            writer: Box::new(writer.clone()),
+            client: Box::new(client),
+        };
+
+        cmd.execute(&InspectCommandArgs {
+            parent: ProgramArgs::default(),
+        })
+        .await?;
+
+        let expected = indoc::indoc! {"
         Workspace: .
 
         Containers:
@@ -274,103 +256,115 @@ mod tests {
         Environment:
           FAKE_VAR = brown-fox
         "};
-        assert_eq!(output, workspace);
-
+        assert_eq!(writer.contents(), expected);
         Ok(())
     }
 
     #[tokio::test]
-    async fn inspect_workspace_fails() -> Result<()> {
-        let args = InspectCommandArgs {
-            parent: ProgramArgs::default(),
-        };
-
-        let mut client = MockWorkspaceClient::new();
-        client
-            .expect_get_workspace()
-            .return_once(|_| Box::pin(async move { Err(anyhow::anyhow!("oh no")) }));
+    async fn inspect_writes_no_containers_message() -> Result<()> {
         let writer = Writer::new();
-        // Prepare the command
-        let mut command = InspectCommand {
-            writer: Box::new(writer),
-            client: Box::new(client),
-        };
-        let result = command.execute(&args).await;
-        assert_eq!(result.unwrap_err().to_string(), "oh no", "expected error");
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn exec_command() -> Result<()> {
-        let client = setup();
-
-        let mut command = ExecCommand {
-            client: Box::new(client),
-        };
-
-        let args = ExecCommandArgs {
-            parent: ProgramArgs::default(),
-            command: vec![
-                String::from("sh"),
-                String::from("-c"),
-                String::from(r#"[ "$FAKE_VAR" = "brown-fox" ]"#),
-                String::from("exit 0"),
-            ],
-        };
-
-        let result = command.execute(&args).await;
-        assert!(result.is_ok(), "expected success");
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn exec_command_fails() -> Result<()> {
         let mut client = MockWorkspaceClient::new();
-        client
-            .expect_get_workspace()
-            .return_once(|_| Box::pin(async move { Err(anyhow::anyhow!("oh no")) }));
-
-        let mut command = ExecCommand {
+        expect_get_workspace(
+            &mut client,
+            Ok(Workspace {
+                folder: ".".into(),
+                config: ".devcontainer/devcontainer.json".into(),
+                containers: vec![],
+                variables: vec![],
+            }),
+        );
+        let mut cmd = InspectCommand {
+            writer: Box::new(writer.clone()),
             client: Box::new(client),
         };
 
-        let args = ExecCommandArgs {
+        cmd.execute(&InspectCommandArgs {
             parent: ProgramArgs::default(),
-            command: vec![String::from("sh")],
+        })
+        .await?;
+
+        assert_eq!(writer.contents(), "No running devcontainers found for .\n");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn inspect_fails_when_client_errors() -> Result<()> {
+        let mut client = MockWorkspaceClient::new();
+        expect_get_workspace(&mut client, Err(anyhow::anyhow!("oh no")));
+        let mut cmd = InspectCommand {
+            writer: Box::new(Writer::new()),
+            client: Box::new(client),
         };
 
-        let result = command.execute(&args).await;
-        assert_eq!(result.unwrap_err().to_string(), "oh no", "expected error");
+        let result = cmd
+            .execute(&InspectCommandArgs {
+                parent: ProgramArgs::default(),
+            })
+            .await;
+
+        assert_eq!(result.unwrap_err().to_string(), "oh no");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn exec_runs_command_with_env() -> Result<()> {
+        let mut client = MockWorkspaceClient::new();
+        expect_get_workspace(&mut client, Ok(workspace()));
+        let mut cmd = ExecCommand {
+            client: Box::new(client),
+        };
+
+        cmd.execute(&ExecCommandArgs {
+            parent: ProgramArgs::default(),
+            command: vec![
+                "sh".into(),
+                "-c".into(),
+                r#"[ "$FAKE_VAR" = "brown-fox" ]"#.into(),
+            ],
+        })
+        .await?;
 
         Ok(())
     }
 
     #[tokio::test]
-    async fn exec_command_fails_with_status() -> Result<()> {
-        let client = setup();
-
-        let mut command = ExecCommand {
+    async fn exec_fails_when_client_errors() -> Result<()> {
+        let mut client = MockWorkspaceClient::new();
+        expect_get_workspace(&mut client, Err(anyhow::anyhow!("oh no")));
+        let mut cmd = ExecCommand {
             client: Box::new(client),
         };
 
-        let args = ExecCommandArgs {
-            parent: ProgramArgs::default(),
-            command: vec![
-                String::from("sh"),
-                String::from("-c"),
-                String::from("exit 1"),
-            ],
+        let result = cmd
+            .execute(&ExecCommandArgs {
+                parent: ProgramArgs::default(),
+                command: vec!["sh".into()],
+            })
+            .await;
+
+        assert_eq!(result.unwrap_err().to_string(), "oh no");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn exec_fails_when_command_exits_nonzero() -> Result<()> {
+        let mut client = MockWorkspaceClient::new();
+        expect_get_workspace(&mut client, Ok(workspace()));
+        let mut cmd = ExecCommand {
+            client: Box::new(client),
         };
 
-        let result = command.execute(&args).await;
+        let result = cmd
+            .execute(&ExecCommandArgs {
+                parent: ProgramArgs::default(),
+                command: vec!["sh".into(), "-c".into(), "exit 1".into()],
+            })
+            .await;
+
         assert_eq!(
             result.unwrap_err().to_string(),
-            "command exited with status exit status: 1",
-            "expected error"
+            "command exited with status exit status: 1"
         );
-
         Ok(())
     }
 }
