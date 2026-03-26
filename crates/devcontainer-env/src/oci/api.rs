@@ -15,25 +15,34 @@ pub struct Workspace {
     pub folder: PathBuf,
     /// Absolute path to the devcontainer.json configuration file.
     pub config: PathBuf,
+    /// Environment variables exported by the devcontainer services.
+    pub variables: Vec<Variable>,
     /// Running containers associated with this workspace.
     pub containers: Vec<Container>,
-    /// Environment variables exported by the devcontainer services.
-    pub environment: Vec<Variable>,
 }
 
 impl std::fmt::Display for Workspace {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "Workspace: {}", self.folder.display())?;
-        writeln!(f)?;
-        writeln!(f, "Containers:")?;
-        for container in &self.containers {
-            writeln!(f, "{container}")?;
+
+        if !self.containers.is_empty() {
+            writeln!(f)?;
+            writeln!(f, "Containers:")?;
+            for container in &self.containers {
+                writeln!(f, "{container}")?;
+                writeln!(f)?;
+            }
+            if !self.variables.is_empty() {
+                if self.containers.is_empty() {
+                    writeln!(f)?;
+                }
+                writeln!(f, "Environment:")?;
+                for var in &self.variables {
+                    writeln!(f, "  {var}")?;
+                }
+            }
         }
-        writeln!(f)?;
-        writeln!(f, "Environment:")?;
-        for var in &self.environment {
-            writeln!(f, "  {var}")?;
-        }
+
         Ok(())
     }
 }
@@ -65,8 +74,8 @@ impl From<VariableVec> for HashMap<String, String> {
 /// Represents a running Docker container within the devcontainer workspace.
 #[derive(Debug)]
 pub struct Container {
-    /// Container name.
-    pub name: String,
+    /// Container names.
+    pub names: Vec<String>,
     /// Image name used to create the container.
     pub image: String,
     /// Port mappings exposed by this container.
@@ -75,10 +84,62 @@ pub struct Container {
 
 impl std::fmt::Display for Container {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "  {}", self.name)?;
-        writeln!(f, "    Image: {}", self.image)?;
-        let ports: Vec<String> = self.ports.iter().map(|p| p.to_string()).collect();
-        write!(f, "    Ports: {}", ports.join(", "))
+        let names: Vec<String> = self
+            .names
+            .iter()
+            .map(|n| n.trim_start_matches('/').to_string())
+            .collect();
+        writeln!(f, "  {}", names.join(", "))?;
+        write!(f, "    Image: {}", self.image)?;
+        if !self.ports.is_empty() {
+            writeln!(f)?;
+            let ports: Vec<String> = self.ports.iter().map(|p| p.to_string()).collect();
+            write!(f, "    Ports: {}", ports.join(", "))?;
+        }
+
+        Ok(())
+    }
+}
+
+impl From<bollard::plugin::ContainerSummary> for Container {
+    fn from(summary: bollard::plugin::ContainerSummary) -> Self {
+        Self {
+            names: summary.names.unwrap(),
+            image: summary.image.unwrap(),
+            ports: summary
+                .ports
+                .unwrap_or_default()
+                .iter()
+                .map(|p| p.clone().into())
+                .collect(),
+        }
+    }
+}
+
+pub struct ContainerFilter {
+    pub name: String,
+    pub value: String,
+}
+
+impl std::fmt::Display for ContainerFilter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}={}", self.name, self.value)
+    }
+}
+
+pub struct ContainerFilters(pub Vec<ContainerFilter>);
+
+impl From<ContainerFilters> for bollard::query_parameters::ListContainersOptions {
+    fn from(filters: ContainerFilters) -> Self {
+        let mut predicate: HashMap<String, Vec<String>> = HashMap::new();
+        predicate.insert(
+            "label".to_string(),
+            filters.0.iter().map(|f| f.to_string()).collect(),
+        );
+        bollard::query_parameters::ListContainersOptionsBuilder::new()
+            .filters(&predicate)
+            .all(true)
+            .build()
     }
 }
 
@@ -87,6 +148,8 @@ impl std::fmt::Display for Container {
 pub struct PortMapping {
     /// Port number inside the container.
     pub container_port: u16,
+    /// Corresponding IP address on the host.
+    pub host_ip: String,
     /// Corresponding port number on the host.
     pub host_port: u16,
     /// Transport protocol (e.g. `"tcp"` or `"udp"`).
@@ -95,7 +158,44 @@ pub struct PortMapping {
 
 impl std::fmt::Display for PortMapping {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} → {}", self.container_port, self.host_port)
+        write!(
+            f,
+            "{} → {}:{}",
+            self.container_port, self.host_ip, self.host_port
+        )
+    }
+}
+
+impl From<bollard::plugin::PortSummary> for PortMapping {
+    fn from(summary: bollard::plugin::PortSummary) -> Self {
+        Self {
+            host_ip: summary.ip.unwrap_or_default(),
+            host_port: summary.public_port.unwrap_or_default(),
+            container_port: summary.private_port,
+            protocol: summary
+                .typ
+                .unwrap_or(bollard::plugin::PortSummaryTypeEnum::TCP)
+                .to_string(),
+        }
+    }
+}
+
+#[async_trait]
+#[cfg_attr(test, automock)]
+pub trait DockerClient {
+    async fn list_containers(
+        &self,
+        opts: Option<bollard::query_parameters::ListContainersOptions>,
+    ) -> Result<Vec<bollard::plugin::ContainerSummary>>;
+}
+
+#[async_trait]
+impl DockerClient for Docker {
+    async fn list_containers(
+        &self,
+        opts: Option<bollard::query_parameters::ListContainersOptions>,
+    ) -> Result<Vec<bollard::plugin::ContainerSummary>> {
+        Ok(Docker::list_containers(self, opts).await?)
     }
 }
 
@@ -108,28 +208,28 @@ pub struct GetWorkspaceParam {
 }
 
 #[async_trait]
+#[cfg_attr(test, automock)]
 pub trait WorkspaceClient {
     async fn get_workspace(&self, args: &GetWorkspaceParam) -> Result<Workspace>;
 }
 
 /// Docker client for querying devcontainer workspace state via the OCI/Docker API.
-pub struct Client {
-    client: Docker,
+pub struct Client<D: DockerClient> {
+    client: D,
 }
 
-impl Client {
+impl Client<Docker> {
     /// Creates a new [`Client`] connected via the default Docker socket.
     ///
     /// Returns an error if the Docker socket cannot be reached.
-    pub fn new() -> Result<Client> {
+    pub fn new() -> Result<Self> {
         let client = Docker::connect_with_socket_defaults()?;
         Ok(Self { client })
     }
 }
 
 #[async_trait]
-#[cfg_attr(test, automock)]
-impl WorkspaceClient for Client {
+impl<D: DockerClient + Send + Sync> WorkspaceClient for Client<D> {
     /// Resolves and returns the [`Workspace`] described by `args`.
     ///
     /// Canonicalizes the workspace folder and config paths, then queries the
@@ -141,32 +241,27 @@ impl WorkspaceClient for Client {
     async fn get_workspace(&self, args: &GetWorkspaceParam) -> Result<Workspace> {
         let config = args.config.canonicalize()?;
         let folder = args.folder.canonicalize()?;
-        // TODO: replace with real Docker queries
-        let containers = vec![Container {
-            name: "devcontainer-app-1".to_string(),
-            image: "mcr.microsoft.com/devcontainers/rust:latest".to_string(),
-            ports: vec![PortMapping {
-                container_port: 8080,
-                host_port: 8080,
-                protocol: "tcp".to_string(),
-            }],
-        }];
-        let environment = vec![
-            Variable {
-                key: "RUST_LOG".to_string(),
-                value: "debug".to_string(),
-            },
-            Variable {
-                key: "DATABASE_URL".to_string(),
-                value: "postgres://localhost:5432/dev".to_string(),
-            },
-        ];
+
+        let variables = Vec::new();
+        let mut containers = Vec::new();
+
+        let filters = ContainerFilters(vec![ContainerFilter {
+            name: String::from("devcontainer.local_folder"),
+            value: format!("{}", folder.display()),
+        }]);
+
+        // List the main containers
+        let collection = self.client.list_containers(Some(filters.into())).await?;
+        // Transform the collection
+        for item in collection {
+            containers.push(item.into());
+        }
 
         Ok(Workspace {
             folder,
             config,
+            variables,
             containers,
-            environment,
         })
     }
 }
@@ -175,40 +270,105 @@ impl WorkspaceClient for Client {
 mod tests {
     use super::*;
     use anyhow::Result;
+    use std::sync::LazyLock;
 
-    #[test]
-    fn workspace_displays_as_text() -> Result<()> {
-        let workspace = Workspace {
-            folder: PathBuf::from("/workspace"),
-            config: PathBuf::from(".devcontainer/devcontainer.json"),
-            containers: vec![Container {
-                name: "devcontainer-app-1".to_string(),
-                image: "mcr.microsoft.com/devcontainers/rust:latest".to_string(),
-                ports: vec![PortMapping {
-                    container_port: 8080,
-                    host_port: 8080,
-                    protocol: "tcp".to_string(),
-                }],
-            }],
-            environment: vec![Variable {
-                key: String::from("FAKE_VAR"),
-                value: String::from("foo-bar"),
-            }],
+    static WORKSPACE_FOLDER: LazyLock<PathBuf> = LazyLock::new(|| {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .canonicalize()
+            .unwrap()
+    });
+
+    fn setup() -> MockDockerClient {
+        let mut client = MockDockerClient::new();
+        client.expect_list_containers().return_once(|_| {
+            Box::pin(async move {
+                Ok(vec![bollard::plugin::ContainerSummary {
+                    id: Some("1".to_string()),
+                    names: Some(vec!["devcontainer-app-1".to_string()]),
+                    image: Some("mcr.microsoft.com/devcontainers/rust:latest".to_string()),
+                    ports: Some(vec![bollard::plugin::PortSummary {
+                        ip: Some("127.0.0.1".to_string()),
+                        public_port: Some(8080),
+                        private_port: 8080,
+                        typ: Some(bollard::plugin::PortSummaryTypeEnum::TCP),
+                    }]),
+                    ..Default::default()
+                }])
+            })
+        });
+
+        client
+    }
+
+    #[tokio::test]
+    async fn client_returns_workspace() -> Result<()> {
+        let args = GetWorkspaceParam {
+            config: WORKSPACE_FOLDER.join(".devcontainer/devcontainer.json"),
+            folder: WORKSPACE_FOLDER.clone(),
         };
 
-        let expected = indoc::indoc! {"
-        Workspace: /workspace
+        let client = setup();
+        let client = Client { client };
+        let workspace = client.get_workspace(&args).await?;
+        assert_eq!(workspace.config, args.config);
+        assert_eq!(workspace.folder, args.folder);
+        assert_eq!(workspace.containers.len(), 1);
 
-        Containers:
-          devcontainer-app-1
-            Image: mcr.microsoft.com/devcontainers/rust:latest
-            Ports: 8080 → 8080
+        let container = workspace.containers.first().unwrap();
+        assert_eq!(container.names, vec!["devcontainer-app-1".to_string()]);
+        assert_eq!(container.ports.len(), 1);
 
-        Environment:
-          FAKE_VAR = foo-bar
-       "};
+        let port = container.ports.first().unwrap();
+        assert_eq!(port.container_port, 8080);
+        assert_eq!(port.host_ip, "127.0.0.1");
+        assert_eq!(port.host_port, 8080);
+        assert_eq!(port.protocol, "tcp");
 
-        assert_eq!(format!("{}", workspace), expected);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn client_returns_workspace_fails() -> Result<()> {
+        let args = GetWorkspaceParam {
+            config: WORKSPACE_FOLDER.join(".devcontainer/devcontainer.json"),
+            folder: WORKSPACE_FOLDER.clone(),
+        };
+
+        let mut client = MockDockerClient::new();
+        client
+            .expect_list_containers()
+            .return_once(|_| Box::pin(async move { anyhow::bail!("oh no") }));
+
+        let client = Client { client };
+        let result = client.get_workspace(&args).await;
+        assert_eq!(result.unwrap_err().to_string(), "oh no", "expected error");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn workspace_displays_as_text() -> Result<()> {
+        let args = GetWorkspaceParam {
+            config: WORKSPACE_FOLDER.join(".devcontainer/devcontainer.json"),
+            folder: WORKSPACE_FOLDER.clone(),
+        };
+
+        let client = setup();
+        let client = Client { client };
+        let workspace = client.get_workspace(&args).await?;
+        let workspace_as_string = indoc::formatdoc! {"
+            Workspace: {folder}
+
+            Containers:
+              devcontainer-app-1
+                Image: mcr.microsoft.com/devcontainers/rust:latest
+                Ports: 8080 → 127.0.0.1:8080
+
+            ",
+            folder = WORKSPACE_FOLDER.display()
+        };
+        assert_eq!(format!("{}", workspace), workspace_as_string);
 
         Ok(())
     }
