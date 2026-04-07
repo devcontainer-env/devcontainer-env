@@ -3,7 +3,11 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use bollard::Docker;
-use std::{collections::HashMap, path::{Path, PathBuf}};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
+use url::Url;
 
 #[cfg(test)]
 use mockall::automock;
@@ -11,12 +15,9 @@ use mockall::automock;
 /// Parsed representation of a `devcontainer.json` configuration file.
 #[derive(serde::Deserialize)]
 pub struct Spec {
-    /// Environment variables injected into the remote user's shell.
-    #[serde(alias = "remoteEnv")]
-    pub remote_env: Option<HashMap<String, String>>,
     /// Environment variables set inside the container at build/start time.
     #[serde(alias = "containerEnv")]
-    pub container_env: Option<HashMap<String, String>>,
+    pub container_env: Option<Environment>,
 }
 
 impl Spec {
@@ -25,29 +26,6 @@ impl Spec {
         let data = String::from_utf8(std::fs::read(path)?)?;
         let spec = jsonc_parser::parse_to_serde_value(data.as_ref(), &Default::default())?;
         Ok(spec)
-    }
-
-    /// Returns variables declared in `container_env`, using runtime `environment` values
-    /// where available and falling back to the spec defaults for any absent keys.
-    fn resolve_env(&self, environment: &Vec<String>) -> HashMap<String, String> {
-        let mut variables = HashMap::new();
-
-        if let Some(kv) = &self.container_env {
-            // Seed with spec defaults so declared-but-absent keys are still included.
-            for (key, default) in kv {
-                variables.insert(key.clone(), default.clone());
-            }
-            // Override with actual runtime values where available.
-            for entry in environment {
-                if let Some((key, value)) = entry.split_once('=') {
-                    if variables.contains_key(key) {
-                        variables.insert(key.to_string(), value.to_string());
-                    }
-                }
-            }
-        }
-
-        variables
     }
 }
 
@@ -58,10 +36,30 @@ pub struct Workspace {
     pub folder: PathBuf,
     /// Absolute path to the devcontainer.json configuration file.
     pub config: PathBuf,
-    /// Environment variables exported by the devcontainer services.
-    pub variables: Vec<Variable>,
     /// Running containers associated with this workspace.
     pub containers: Vec<Container>,
+    /// Environment variables exported by the devcontainer services.
+    pub environment: Environment,
+}
+
+impl Workspace {
+    /// Rewrites environment variable values that are URLs referencing a container host,
+    /// replacing the container port with the corresponding mapped host port.
+    fn rewrite(mut self) -> Self {
+        for var in &mut self.environment.variables {
+            if let Some(value) = Url::parse(&var.value).ok().and_then(|mut url| {
+                let host = url.host()?.to_string();
+                let port = url.port_or_known_default()?;
+                let container = self.containers.iter().find(|c| c.hosts.contains(&host))?;
+                let mapping = container.ports.iter().find(|m| m.container_port == port)?;
+                url.set_port(Some(mapping.host_port)).ok()?;
+                Some(url.to_string())
+            }) {
+                var.value = value;
+            }
+        }
+        self
+    }
 }
 
 impl std::fmt::Display for Workspace {
@@ -77,43 +75,19 @@ impl std::fmt::Display for Workspace {
             while let Some(container) = iter.next() {
                 write!(f, "{container}")?;
                 // Do not write new line if we are the last container.
-                if iter.peek().is_some() || !self.variables.is_empty() {
+                if iter.peek().is_some() || !self.environment.variables.is_empty() {
                     writeln!(f)?;
                 }
             }
-            if !self.variables.is_empty() {
+            if !self.environment.variables.is_empty() {
                 writeln!(f, "Environment:")?;
-                for var in &self.variables {
-                    writeln!(f, "  {var}")?;
+                for variable in &self.environment.variables {
+                    writeln!(f, "  {variable}")?;
                 }
             }
         }
 
         Ok(())
-    }
-}
-
-/// A single environment variable as a key-value pair.
-#[derive(Debug)]
-pub struct Variable {
-    /// The variable name.
-    pub key: String,
-    /// The variable value.
-    pub value: String,
-}
-
-impl std::fmt::Display for Variable {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} = {}", self.key, self.value)
-    }
-}
-
-/// A newtype wrapper around a [`Vec<Variable>`] that supports conversion into a [`HashMap`].
-pub struct VecVariable(pub Vec<Variable>);
-
-impl From<VecVariable> for HashMap<String, String> {
-    fn from(vars: VecVariable) -> Self {
-        vars.0.into_iter().map(|var| (var.key, var.value)).collect()
     }
 }
 
@@ -130,6 +104,8 @@ pub struct Container {
     pub hosts: Vec<String>,
     /// Port mappings exposed by this container.
     pub ports: Vec<PortMapping>,
+    /// Environment variables set in the container.
+    pub environment: Vec<String>,
 }
 
 impl std::fmt::Display for Container {
@@ -154,12 +130,12 @@ impl std::fmt::Display for Container {
 }
 
 impl From<bollard::plugin::ContainerSummary> for Container {
-    fn from(summary: bollard::plugin::ContainerSummary) -> Self {
+    fn from(value: bollard::plugin::ContainerSummary) -> Self {
         let mut container = Self {
-            id: summary.id.unwrap(),
-            names: summary.names.unwrap(),
-            image: summary.image.unwrap(),
-            hosts: summary
+            id: value.id.unwrap(),
+            names: value.names.unwrap(),
+            image: value.image.unwrap(),
+            hosts: value
                 .network_settings
                 .unwrap_or_default()
                 .networks
@@ -167,20 +143,100 @@ impl From<bollard::plugin::ContainerSummary> for Container {
                 .values()
                 .flat_map(|endpoint| endpoint.dns_names.clone().unwrap_or_default())
                 .collect(),
-            ports: summary
+            ports: value
                 .ports
                 .unwrap_or_default()
                 .iter()
                 .map(|p| p.clone().into())
                 .collect(),
+            environment: vec![],
         };
 
-        if let Some(labels) = summary.labels {
+        if let Some(labels) = value.labels {
             let service = labels.get("com.docker.compose.service").cloned();
             // We consider the service name as the main host.
             if let Some(name) = service {
                 if !container.hosts.contains(&name) {
                     container.hosts.insert(0, name);
+                }
+            }
+        }
+
+        container
+    }
+}
+
+impl From<bollard::plugin::ContainerInspectResponse> for Container {
+    fn from(value: bollard::plugin::ContainerInspectResponse) -> Self {
+        let mut container = Self {
+            id: value.id.unwrap_or_default(),
+
+            names: value
+                .name
+                .into_iter()
+                .map(|n| n.trim_start_matches('/').to_string())
+                .collect(),
+
+            image: value
+                .config
+                .as_ref()
+                .and_then(|c| c.image.clone())
+                .unwrap_or_default(),
+
+            environment: value
+                .config
+                .as_ref()
+                .and_then(|c| c.env.clone())
+                .unwrap_or_default(),
+
+            hosts: value
+                .network_settings
+                .as_ref()
+                .and_then(|ns| ns.networks.as_ref())
+                .map(|nets| {
+                    nets.values()
+                        .flat_map(|endpoint| endpoint.dns_names.clone().unwrap_or_default())
+                        .collect()
+                })
+                .unwrap_or_default(),
+
+            ports: value
+                .network_settings
+                .as_ref()
+                .and_then(|ns| ns.ports.as_ref())
+                .map(|ports| {
+                    ports
+                        .iter()
+                        .flat_map(|(key, bindings)| {
+                            // key example: "80/tcp"
+                            let (port_str, proto) =
+                                key.split_once('/').unwrap_or((key.as_str(), "tcp"));
+
+                            let container_port = port_str.parse::<u16>().unwrap_or_default();
+
+                            bindings.as_ref().into_iter().flat_map(move |vec| {
+                                vec.iter().map(move |b| PortMapping {
+                                    container_port,
+                                    protocol: proto.to_string(),
+                                    host_ip: b.host_ip.clone().unwrap_or_default(),
+                                    host_port: b
+                                        .host_port
+                                        .as_deref()
+                                        .and_then(|p| p.parse().ok())
+                                        .unwrap_or_default(),
+                                })
+                            })
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
+        };
+
+        // Same compose service logic as before
+        if let Some(labels) = value.config.as_ref().and_then(|c| c.labels.as_ref()) {
+            if let Some(name) = labels.get("com.docker.compose.service") {
+                if !container.hosts.contains(name) {
+                    container.hosts.insert(0, name.clone());
                 }
             }
         }
@@ -217,6 +273,81 @@ impl From<ListContainersFilter> for bollard::query_parameters::ListContainersOpt
             .filters(&predicate)
             .all(false)
             .build()
+    }
+}
+
+/// A single environment variable as a key-value pair.
+#[derive(Debug)]
+pub struct Variable {
+    /// The variable name.
+    pub key: String,
+    /// The variable value.
+    pub value: String,
+}
+
+impl std::fmt::Display for Variable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} = {}", self.key, self.value)
+    }
+}
+
+impl std::str::FromStr for Variable {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (key, value) = s.split_once('=').ok_or(())?;
+        Ok(Self {
+            key: key.to_string(),
+            value: value.to_string(),
+        })
+    }
+}
+
+/// Resolved environment variables for a devcontainer workspace,
+/// with optional host-port URL rewriting applied.
+#[derive(Debug, Default, serde::Deserialize)]
+#[serde(from = "HashMap<String, String>")]
+pub struct Environment {
+    pub variables: Vec<Variable>,
+}
+
+impl Environment {
+    /// Overrides values in `self` with matching keys from `other`, ignoring undeclared keys.
+    fn apply(mut self, other: &Environment) -> Self {
+        for var in &mut self.variables {
+            if let Some(runtime) = other.variables.iter().find(|v| v.key == var.key) {
+                var.value = runtime.value.clone();
+            }
+        }
+        self
+    }
+}
+
+impl From<Vec<String>> for Environment {
+    fn from(env: Vec<String>) -> Self {
+        Self {
+            variables: env.into_iter().filter_map(|e| e.parse().ok()).collect(),
+        }
+    }
+}
+
+impl From<HashMap<String, String>> for Environment {
+    fn from(env: HashMap<String, String>) -> Self {
+        Self {
+            variables: env
+                .into_iter()
+                .map(|(key, value)| Variable { key, value })
+                .collect(),
+        }
+    }
+}
+
+impl From<Environment> for HashMap<String, String> {
+    fn from(env: Environment) -> Self {
+        env.variables
+            .into_iter()
+            .map(|v| (v.key, v.value))
+            .collect()
     }
 }
 
@@ -360,43 +491,36 @@ impl<D: DockerClient + Send + Sync> WorkspaceClient for Client<D> {
         let mut containers: Vec<Container> = Vec::new();
         // Try each filter until we list the desired containers
         for filter in filters {
-            // Prepare the options
             let opts = Some(ListContainersFilter(vec![filter]).into());
-            // List the main containers
             let collection = self.client.list_containers(opts).await?;
-            // Transform the collection
-            for item in collection {
-                containers.push(item.into());
+
+            for summary in collection {
+                let id = summary.id.clone().unwrap_or_default();
+                let inspect = self.client.inspect_container(&id, None).await?;
+                containers.push(inspect.into());
             }
-            // We should stop
+
             if !containers.is_empty() {
                 break;
             }
         }
 
-        let mut variables = Vec::new();
-        let spec: Spec = Spec::read_from_file(&config)?;
+        let environment: Environment = containers
+            .first()
+            .map(|c| c.environment.clone())
+            .unwrap_or_default()
+            .into();
 
-        // Let's prepare the variables
-        if let Some(container) = containers.first() {
-            let metadata = self.client.inspect_container(&container.id, None).await?;
-            let environment = metadata.config.unwrap_or_default().env.unwrap_or_default();
-            let environment = spec.resolve_env(&environment);
-            // Transform the variables into structs
-            for (key, value) in environment {
-                variables.push(Variable {
-                    key: key.to_string(),
-                    value: value.to_string(),
-                })
-            }
-        }
+        let spec = Spec::read_from_file(&config)?;
+        let environment = spec.container_env.unwrap_or_default().apply(&environment);
 
         Ok(Workspace {
             folder,
             config,
-            variables,
             containers,
-        })
+            environment,
+        }
+        .rewrite())
     }
 }
 
@@ -428,6 +552,32 @@ mod tests {
         }
     }
 
+    fn container_inspect_response() -> bollard::plugin::ContainerInspectResponse {
+        bollard::plugin::ContainerInspectResponse {
+            id: Some("1".to_string()),
+            name: Some("/devcontainer-app-1".to_string()),
+            config: Some(bollard::plugin::ContainerConfig {
+                image: Some("mcr.microsoft.com/devcontainers/rust:latest".to_string()),
+                ..Default::default()
+            }),
+            network_settings: Some(bollard::plugin::NetworkSettings {
+                ports: Some({
+                    let mut ports = HashMap::new();
+                    ports.insert(
+                        "8080/tcp".to_string(),
+                        Some(vec![bollard::plugin::PortBinding {
+                            host_ip: Some("127.0.0.1".to_string()),
+                            host_port: Some("8080".to_string()),
+                        }]),
+                    );
+                    ports
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }
+    }
+
     fn expect_list_containers(
         client: &mut MockDockerClient,
         res: Result<Vec<bollard::plugin::ContainerSummary>>,
@@ -450,7 +600,7 @@ mod tests {
     async fn get_workspace_returns_containers() -> Result<()> {
         let mut client = MockDockerClient::new();
         expect_list_containers(&mut client, Ok(vec![container_summary()]));
-        expect_inspect_container(&mut client, Ok(Default::default()));
+        expect_inspect_container(&mut client, Ok(container_inspect_response()));
         let client = Client { client };
 
         let workspace = client
@@ -486,7 +636,7 @@ mod tests {
     async fn workspace_displays_as_text() -> Result<()> {
         let mut client = MockDockerClient::new();
         expect_list_containers(&mut client, Ok(vec![container_summary()]));
-        expect_inspect_container(&mut client, Ok(Default::default()));
+        expect_inspect_container(&mut client, Ok(container_inspect_response()));
         let client = Client { client };
 
         let workspace = client
@@ -521,8 +671,9 @@ mod tests {
                 image: "rust:latest".to_string(),
                 hosts: vec![],
                 ports: vec![],
+                environment: vec![],
             }],
-            variables: vec![],
+            environment: Environment { variables: vec![] },
         };
 
         let output = workspace.to_string();
@@ -531,60 +682,34 @@ mod tests {
     }
 
     #[test]
-    fn spec_resolves_environment() {
-        let container_env = HashMap::from([("ALLOWED_VAR".to_string(), "default".to_string())]);
-
-        let spec = Spec {
-            remote_env: None,
-            container_env: Some(container_env),
-        };
-
-        let resolved = spec.resolve_env(&vec!["ALLOWED_VAR=real_value".to_string()]);
-        assert_eq!(resolved.get("ALLOWED_VAR").unwrap(), "real_value");
+    fn environment_apply_overrides_with_runtime_value() {
+        let env = Environment::from(HashMap::from([("VAR".to_string(), "default".to_string())]));
+        let result = env.apply(&Environment::from(vec!["VAR=real_value".to_string()]));
+        assert_eq!(result.variables[0].value, "real_value");
     }
 
     #[test]
-    fn spec_filters_undeclared_variables() {
-        let spec = Spec {
-            remote_env: None,
-            container_env: Some(HashMap::from([(
-                "ALLOWED_VAR".to_string(),
-                "default".to_string(),
-            )])),
-        };
-
-        let resolved = spec.resolve_env(&vec![
-            "ALLOWED_VAR=allowed".to_string(),
-            "IGNORED_VAR=ignored".to_string(),
-        ]);
-
-        assert_eq!(resolved.get("ALLOWED_VAR").unwrap(), "allowed");
-        assert_eq!(resolved.get("IGNORED_VAR"), None);
+    fn environment_apply_ignores_undeclared_keys() {
+        let env = Environment::from(HashMap::from([("VAR".to_string(), "default".to_string())]));
+        let result = env.apply(&Environment::from(vec![
+            "VAR=allowed".to_string(),
+            "IGNORED=ignored".to_string(),
+        ]));
+        assert_eq!(result.variables.len(), 1);
+        assert_eq!(result.variables[0].value, "allowed");
     }
 
     #[test]
-    fn spec_uses_default_when_key_absent_from_runtime_env() {
-        let spec = Spec {
-            remote_env: None,
-            container_env: Some(HashMap::from([(
-                "MISSING_VAR".to_string(),
-                "default_value".to_string(),
-            )])),
-        };
-
-        let resolved = spec.resolve_env(&vec![]);
-        assert_eq!(resolved.get("MISSING_VAR").map(String::as_str), Some("default_value"));
+    fn environment_apply_keeps_default_when_key_absent() {
+        let env = Environment::from(HashMap::from([("VAR".to_string(), "default".to_string())]));
+        let result = env.apply(&Environment::from(vec![]));
+        assert_eq!(result.variables[0].value, "default");
     }
 
     #[test]
-    fn spec_returns_empty_when_container_env_is_none() {
-        let spec = Spec {
-            remote_env: None,
-            container_env: None,
-        };
-
-        let resolved = spec.resolve_env(&vec!["SOME_VAR=value".to_string()]);
-        assert!(resolved.is_empty());
+    fn environment_from_vec_parses_key_value_pairs() {
+        let env = Environment::from(vec!["FOO=bar".to_string(), "BAZ=qux".to_string()]);
+        assert_eq!(env.variables.len(), 2);
     }
 
     #[test]
@@ -664,5 +789,106 @@ mod tests {
             protocol: "tcp".to_string(),
         };
         assert_eq!(port.to_string(), "80 → 127.0.0.1:8080");
+    }
+
+    // --- Workspace::rewrite tests ---
+
+    #[test]
+    fn workspace_rewrite_rewrites_url_env_vars() {
+        let workspace = Workspace {
+            folder: ".".into(),
+            config: ".devcontainer/devcontainer.json".into(),
+            containers: vec![Container {
+                id: "1".to_string(),
+                names: vec!["app".to_string()],
+                image: "rust:latest".to_string(),
+                hosts: vec!["app".to_string()],
+                ports: vec![PortMapping {
+                    container_port: 5432,
+                    host_ip: "127.0.0.1".to_string(),
+                    host_port: 54320,
+                    protocol: "tcp".to_string(),
+                }],
+                environment: vec![],
+            }],
+            environment: Environment::from(vec!["DB_URL=postgres://app:5432/db".to_string()]),
+        };
+        let rewritten = workspace.rewrite();
+        assert_eq!(
+            rewritten.environment.variables[0].value,
+            "postgres://app:54320/db"
+        );
+    }
+
+    #[test]
+    fn workspace_rewrite_leaves_non_url_vars_unchanged() {
+        let workspace = Workspace {
+            folder: ".".into(),
+            config: ".devcontainer/devcontainer.json".into(),
+            containers: vec![],
+            environment: Environment::from(vec!["FOO=bar".to_string()]),
+        };
+        let rewritten = workspace.rewrite();
+        assert_eq!(rewritten.environment.variables[0].value, "bar");
+    }
+
+    // --- Container::from(ContainerInspectResponse) tests ---
+
+    #[test]
+    fn container_from_inspect_response() {
+        let response = bollard::plugin::ContainerInspectResponse {
+            id: Some("abc123".to_string()),
+            name: Some("/my-container".to_string()),
+            config: Some(bollard::plugin::ContainerConfig {
+                image: Some("rust:latest".to_string()),
+                env: Some(vec!["FOO=bar".to_string(), "BAZ=qux".to_string()]),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let container = Container::from(response);
+        assert_eq!(container.id, "abc123");
+        assert_eq!(container.names, vec!["my-container"]);
+        assert_eq!(container.image, "rust:latest");
+        assert_eq!(container.environment, vec!["FOO=bar", "BAZ=qux"]);
+    }
+
+    #[test]
+    fn container_from_inspect_response_includes_compose_service_as_host() {
+        let response = bollard::plugin::ContainerInspectResponse {
+            id: Some("abc123".to_string()),
+            name: Some("/my-container".to_string()),
+            config: Some(bollard::plugin::ContainerConfig {
+                image: Some("rust:latest".to_string()),
+                labels: Some(HashMap::from([(
+                    "com.docker.compose.service".to_string(),
+                    "app".to_string(),
+                )])),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let container = Container::from(response);
+        assert_eq!(container.hosts.first().map(String::as_str), Some("app"));
+    }
+
+    // --- get_workspace failure path test ---
+
+    #[tokio::test]
+    async fn get_workspace_fails_when_inspect_errors() -> Result<()> {
+        let mut client = MockDockerClient::new();
+        expect_list_containers(&mut client, Ok(vec![container_summary()]));
+        expect_inspect_container(&mut client, Err(anyhow::anyhow!("inspect failed")));
+        let client = Client { client };
+
+        let result = client
+            .get_workspace(&GetWorkspaceParam {
+                config: WORKSPACE_FOLDER.join(".devcontainer/devcontainer.json"),
+                folder: WORKSPACE_FOLDER.clone(),
+            })
+            .await;
+
+        assert_eq!(result.unwrap_err().to_string(), "inspect failed");
+        Ok(())
     }
 }
