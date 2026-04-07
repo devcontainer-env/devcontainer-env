@@ -51,7 +51,11 @@ impl Workspace {
                 let host = url.host()?.to_string();
                 let port = url.port_or_known_default()?;
                 let container = self.containers.iter().find(|c| c.hosts.contains(&host))?;
-                let mapping = container.ports.iter().find(|m| m.container_port == port)?;
+                let mapping = container
+                    .ports
+                    .iter()
+                    .find(|m| m.container_port == port && m.host_port != 0)?;
+                url.set_ip_host("127.0.0.1".parse().unwrap()).unwrap();
                 url.set_port(Some(mapping.host_port)).ok()?;
                 Some(url.to_string())
             }) {
@@ -105,7 +109,7 @@ pub struct Container {
     /// Port mappings exposed by this container.
     pub ports: Vec<PortMapping>,
     /// Environment variables set in the container.
-    pub environment: Vec<String>,
+    pub environment: Environment,
 }
 
 impl std::fmt::Display for Container {
@@ -149,7 +153,7 @@ impl From<bollard::plugin::ContainerSummary> for Container {
                 .iter()
                 .map(|p| p.clone().into())
                 .collect(),
-            environment: vec![],
+            environment: Environment::default(),
         };
 
         if let Some(labels) = value.labels {
@@ -187,7 +191,8 @@ impl From<bollard::plugin::ContainerInspectResponse> for Container {
                 .config
                 .as_ref()
                 .and_then(|c| c.env.clone())
-                .unwrap_or_default(),
+                .unwrap_or_default()
+                .into(),
 
             hosts: value
                 .network_settings
@@ -277,7 +282,7 @@ impl From<ListContainersFilter> for bollard::query_parameters::ListContainersOpt
 }
 
 /// A single environment variable as a key-value pair.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Variable {
     /// The variable name.
     pub key: String,
@@ -305,7 +310,7 @@ impl std::str::FromStr for Variable {
 
 /// Resolved environment variables for a devcontainer workspace,
 /// with optional host-port URL rewriting applied.
-#[derive(Debug, Default, serde::Deserialize)]
+#[derive(Debug, Default, Clone, serde::Deserialize)]
 #[serde(from = "HashMap<String, String>")]
 pub struct Environment {
     pub variables: Vec<Variable>,
@@ -505,11 +510,10 @@ impl<D: DockerClient + Send + Sync> WorkspaceClient for Client<D> {
             }
         }
 
-        let environment: Environment = containers
+        let environment = containers
             .first()
             .map(|c| c.environment.clone())
-            .unwrap_or_default()
-            .into();
+            .unwrap_or_default();
 
         let spec = Spec::read_from_file(&config)?;
         let environment = spec.container_env.unwrap_or_default().apply(&environment);
@@ -671,7 +675,7 @@ mod tests {
                 image: "rust:latest".to_string(),
                 hosts: vec![],
                 ports: vec![],
-                environment: vec![],
+                environment: Environment::default(),
             }],
             environment: Environment { variables: vec![] },
         };
@@ -809,14 +813,14 @@ mod tests {
                     host_port: 54320,
                     protocol: "tcp".to_string(),
                 }],
-                environment: vec![],
+                environment: Environment::default(),
             }],
             environment: Environment::from(vec!["DB_URL=postgres://app:5432/db".to_string()]),
         };
         let rewritten = workspace.rewrite();
         assert_eq!(
             rewritten.environment.variables[0].value,
-            "postgres://app:54320/db"
+            "postgres://127.0.0.1:54320/db"
         );
     }
 
@@ -830,6 +834,33 @@ mod tests {
         };
         let rewritten = workspace.rewrite();
         assert_eq!(rewritten.environment.variables[0].value, "bar");
+    }
+
+    #[test]
+    fn workspace_rewrite_skips_url_when_port_not_published() {
+        let workspace = Workspace {
+            folder: ".".into(),
+            config: ".devcontainer/devcontainer.json".into(),
+            containers: vec![Container {
+                id: "1".to_string(),
+                names: vec!["db".to_string()],
+                image: "postgres:latest".to_string(),
+                hosts: vec!["db".to_string()],
+                ports: vec![PortMapping {
+                    container_port: 5432,
+                    host_ip: "".to_string(),
+                    host_port: 0, // not published to host
+                    protocol: "tcp".to_string(),
+                }],
+                environment: Environment::default(),
+            }],
+            environment: Environment::from(vec!["DB_URL=postgres://db:5432/mydb".to_string()]),
+        };
+        let rewritten = workspace.rewrite();
+        assert_eq!(
+            rewritten.environment.variables[0].value,
+            "postgres://db:5432/mydb" // unchanged: port is internal-only
+        );
     }
 
     // --- Container::from(ContainerInspectResponse) tests ---
@@ -850,7 +881,20 @@ mod tests {
         assert_eq!(container.id, "abc123");
         assert_eq!(container.names, vec!["my-container"]);
         assert_eq!(container.image, "rust:latest");
-        assert_eq!(container.environment, vec!["FOO=bar", "BAZ=qux"]);
+        let keys: Vec<&str> = container
+            .environment
+            .variables
+            .iter()
+            .map(|v| v.key.as_str())
+            .collect();
+        let values: Vec<&str> = container
+            .environment
+            .variables
+            .iter()
+            .map(|v| v.value.as_str())
+            .collect();
+        assert_eq!(keys, vec!["FOO", "BAZ"]);
+        assert_eq!(values, vec!["bar", "qux"]);
     }
 
     #[test]
