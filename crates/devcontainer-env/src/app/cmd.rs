@@ -26,12 +26,12 @@ impl ExportCommand {
         // Export the workspace
         match args.format {
             ExportFormat::Bash => {
-                for entry in workspace.variables {
+                for entry in workspace.environment.variables {
                     writeln!(self.writer, "export {}={}", entry.key, entry.value)?;
                 }
             }
             ExportFormat::Json => {
-                let environment: HashMap<String, String> = VecVariable(workspace.variables).into();
+                let environment: HashMap<String, String> = HashMap::from(workspace.environment);
                 writeln!(self.writer, "{}", serde_json::to_string(&environment)?)?;
             }
         }
@@ -54,7 +54,7 @@ impl ExecCommand {
         };
         let workspace = self.client.get_workspace(params).await?;
         let mut arguments = VecDeque::from(args.command.clone());
-        let environment: HashMap<String, String> = VecVariable(workspace.variables).into();
+        let environment: HashMap<String, String> = HashMap::from(workspace.environment);
 
         // Prepare the command
         let name = match arguments.pop_front() {
@@ -155,11 +155,14 @@ mod tests {
                     container_port: 8080,
                     protocol: "tcp".to_string(),
                 }],
+                environment: vec![],
             }],
-            variables: vec![Variable {
-                key: String::from("FAKE_VAR"),
-                value: String::from("brown-fox"),
-            }],
+            environment: Environment {
+                variables: vec![Variable {
+                    key: String::from("FAKE_VAR"),
+                    value: String::from("brown-fox"),
+                }],
+            },
         }
     }
 
@@ -270,7 +273,7 @@ mod tests {
                 folder: ".".into(),
                 config: ".devcontainer/devcontainer.json".into(),
                 containers: vec![],
-                variables: vec![],
+                environment: Environment { variables: vec![] },
             }),
         );
         let mut cmd = InspectCommand {
