@@ -155,7 +155,7 @@ mod tests {
                     container_port: 8080,
                     protocol: "tcp".to_string(),
                 }],
-                environment: vec![],
+                environment: Environment::default(),
             }],
             environment: Environment {
                 variables: vec![Variable {
