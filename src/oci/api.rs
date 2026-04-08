@@ -536,7 +536,7 @@ mod tests {
 
     static WORKSPACE_FOLDER: LazyLock<PathBuf> = LazyLock::new(|| {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
+            .join("..")
             .canonicalize()
             .expect("failed to canonicalize workspace path")
     });
