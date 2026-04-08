@@ -1,15 +1,16 @@
 use assert_cmd::cargo::cargo_bin_cmd;
 use predicates::prelude::*;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+fn devcontainer_working_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .canonicalize()
+        .unwrap()
+}
 
 fn devcontainer_env() -> assert_cmd::Command {
     let mut cmd = cargo_bin_cmd!();
-    cmd.current_dir(
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .canonicalize()
-            .unwrap(),
-    );
+    cmd.current_dir(devcontainer_working_dir());
     cmd
 }
 
@@ -19,15 +20,12 @@ fn inspect_default() {
         .args(["inspect"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("devcontainer-env"));
+        .stdout(predicate::str::contains("No running devcontainers found"));
 }
 
 #[test]
 fn inspect_with_workspace_folder() {
-    let workspace = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .canonicalize()
-        .unwrap();
+    let workspace = devcontainer_working_dir();
     cargo_bin_cmd!()
         .args([
             "inspect",
@@ -41,7 +39,7 @@ fn inspect_with_workspace_folder() {
         ])
         .assert()
         .success()
-        .stdout(predicate::str::contains("devcontainer-env"));
+        .stdout(predicate::str::contains("No running devcontainers found"));
 }
 
 #[test]

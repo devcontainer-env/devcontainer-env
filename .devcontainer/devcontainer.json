@@ -1,8 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/devcontainers/spec/refs/heads/main/schemas/devContainer.base.schema.json",
   "name": "devcontainer-env",
-  "dockerComposeFile": "docker-compose.yml",
-  "service": "devcontainer",
   "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
   "mounts": [
     "source=${localWorkspaceFolderBasename}-nix,target=/nix,type=volume",
