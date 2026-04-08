@@ -25,6 +25,12 @@
             manifest.name
           ];
           doCheck = false;
+          meta = with pkgs.lib; {
+            description = "direnv that bridges devcontainers and the host environment";
+            homepage = "https://github.com/devcontainer-env/devcontainer-env";
+            license = licenses.mit;
+            mainProgram = manifest.name;
+          };
         };
       }
     );
