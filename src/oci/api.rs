@@ -157,6 +157,10 @@ impl From<bollard::plugin::ContainerSummary> for Container {
         };
 
         if let Some(labels) = value.labels {
+            if labels.contains_key("dev.containers.id") {
+                container.names.push(String::from("main"))
+            }
+
             let service = labels.get("com.docker.compose.service").cloned();
             // We consider the service name as the main host.
             if let Some(name) = service {
@@ -237,8 +241,12 @@ impl From<bollard::plugin::ContainerInspectResponse> for Container {
                 .unwrap_or_default(),
         };
 
-        // Same compose service logic as before
+        // Mark as main container if it has the dev.containers.id label (VS Code Dev Containers)
         if let Some(labels) = value.config.as_ref().and_then(|c| c.labels.as_ref()) {
+            if labels.contains_key("dev.containers.id") {
+                container.names.push(String::from("main"));
+            }
+            // Also add compose service as host
             if let Some(name) = labels.get("com.docker.compose.service") {
                 if !container.hosts.contains(name) {
                     container.hosts.insert(0, name.clone());
@@ -511,7 +519,9 @@ impl<D: DockerClient + Send + Sync> WorkspaceClient for Client<D> {
         }
 
         let environment = containers
-            .first()
+            .iter()
+            .find(|c| c.names.iter().any(|n| n == "main"))
+            .or_else(|| containers.first())
             .map(|c| c.environment.clone())
             .unwrap_or_default();
 
@@ -952,5 +962,44 @@ mod tests {
 
         assert_eq!(result.unwrap_err().to_string(), "inspect failed");
         Ok(())
+    }
+
+    // --- Tests for dev.containers.id label marking ---
+
+    #[test]
+    fn container_from_summary_includes_main_when_devcontainer_label_present() {
+        let summary = bollard::plugin::ContainerSummary {
+            id: Some("1".to_string()),
+            names: Some(vec!["devcontainer-app-1".to_string()]),
+            image: Some("rust:latest".to_string()),
+            labels: Some(HashMap::from([(
+                "dev.containers.id".to_string(),
+                "some-id".to_string(),
+            )])),
+            ..Default::default()
+        };
+
+        let container = Container::from(summary);
+        assert!(container.names.contains(&"main".to_string()));
+    }
+
+    #[test]
+    fn container_from_inspect_response_includes_main_when_devcontainer_label_present() {
+        let response = bollard::plugin::ContainerInspectResponse {
+            id: Some("abc123".to_string()),
+            name: Some("/my-container".to_string()),
+            config: Some(bollard::plugin::ContainerConfig {
+                image: Some("rust:latest".to_string()),
+                labels: Some(HashMap::from([(
+                    "dev.containers.id".to_string(),
+                    "some-id".to_string(),
+                )])),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let container = Container::from(response);
+        assert!(container.names.contains(&"main".to_string()));
     }
 }
