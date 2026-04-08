@@ -14,9 +14,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v21
+
       - name: Setup Nix Cache
         uses: DeterminateSystems/magic-nix-cache-action@v13
+
       - name: Run Tests
         run: nix develop --command cargo test
