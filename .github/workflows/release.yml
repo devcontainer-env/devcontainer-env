@@ -50,7 +50,7 @@ jobs:
         run: nix build . --system ${{ matrix.nix_system }}
 
       - name: Rename Binary
-        run: cp result/bin/devcontainer-env result/bin/devcontainer-env-${{ matrix.nix_system }}
+        run: install -m 0755 result/bin/devcontainer-env result/bin/devcontainer-env-${{ matrix.nix_system }}
 
       - name: Upload Release Assets
         uses: softprops/action-gh-release@v2
