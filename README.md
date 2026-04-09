@@ -35,32 +35,6 @@ nix profile install github:devcontainer-env/devcontainer-env
 
 ## Usage
 
-### Export Environment Variables
-
-```bash
-eval "$(devcontainer-env export)"
-```
-
-To make persistent, add to your `.envrc` file. Then run `direnv allow` to enable it.
-
-### Run Commands
-
-Execute commands with devcontainer environment variables:
-
-```bash
-devcontainer-env exec -- go test ./...
-```
-
-### Inspect Configuration
-
-View parsed devcontainer configuration and service port mappings:
-
-```bash
-devcontainer-env inspect
-```
-
-### CLI Reference
-
 ```
 Usage: devcontainer-env <COMMAND>
 
