@@ -58,7 +58,7 @@ jobs:
           files: result/bin/devcontainer-env
           name: ${{ matrix.asset_name }}
 
-  publish-crate:
+  crate:
     needs: release-please
     if: ${{ needs.release-please.outputs.release_created }}
     runs-on: ubuntu-latest
