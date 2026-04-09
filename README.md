@@ -58,9 +58,7 @@ $ devcontainer-env export
 ```
 
 ```bash
-export EXAMPLE_API_LOG_LEVEL=DEBUG
-export EXAMPLE_API_LOG_PRETTY=true
-export EXAMPLE_API_DATABASE_URL=postgres://vscode@127.0.0.1:32770/example-db?sslmode=disable
+export EXAMPLE_API_DATABASE_URL=postgres://vscode@127.0.0.1:32771/example-db?sslmode=disable
 ```
 
 **devcontainer-env exec** — Run a command with devcontainer environment available:
@@ -78,74 +76,29 @@ $ devcontainer-env inspect
 ```
 
 ```bash
-Workspace: /Users/iamralch/Projects/github.com/example-org/example-api
+Workspace: /Users/iamralch/Projects/github.com/devcontainer-env/devcontainer-env/example
 
 Containers:
-  default-co-bd5e8-postgres-1
+  example_devcontainer-postgres-1
     Image: postgres:18-bookworm
-    Hosts: default-co-bd5e8-postgres-1, postgres, fe6eca554c95
-    Ports: 5432 → 0.0.0.0:32770, 5432 → :::32770
+    Hosts: example_devcontainer-postgres-1, postgres, 3dac21f544da
+    Ports: 5432 → 0.0.0.0:32771, 5432 → :::32771
 
-  default-co-bd5e8-workspace-1, main
+  example_devcontainer-workspace-1, main
     Image: mcr.microsoft.com/devcontainers/base:noble
-    Hosts: default-co-bd5e8-workspace-1, workspace, d93fdbd4f540
+    Hosts: example_devcontainer-workspace-1, workspace, 742062d03e2e
 
 Environment:
-  EXAMPLE_API_LOG_LEVEL = DEBUG
-  EXAMPLE_API_LOG_PRETTY = true
-  EXAMPLE_API_DATABASE_URL = postgres://vscode@127.0.0.1:32770/example-db?sslmode=disable
+  EXAMPLE_API_DATABASE_URL = postgres://vscode@127.0.0.1:32771/example-db?sslmode=disable
 ```
 
 ## Configuration
 
-Configure your `.devcontainer/devcontainer.json` to define environment variables and services:
+See the [`example/`](./example) directory for a complete working configuration.
 
-### devcontainer.json
+### Variable Exporting
 
-```json
-{
-  "$schema": "https://raw.githubusercontent.com/devcontainers/spec/refs/heads/main/schemas/devContainer.base.schema.json",
-  "name": "my-project",
-  "service": "workspace",
-  "dockerComposeFile": "docker-compose.yml",
-  "workspaceFolder": "/home/vscode/workspace",
-  "remoteUser": "vscode",
-  "containerEnv": {
-    "EXAMPLE_API_LOG_LEVEL": "DEBUG",
-    "EXAMPLE_API_LOG_PRETTY": "true",
-    "EXAMPLE_API_DATABASE_URL": "postgres://vscode@postgres:5432/example-db?sslmode=disable"
-  }
-}
-```
-
-### docker-compose.yml
-
-```yaml
-services:
-  workspace:
-    image: "mcr.microsoft.com/devcontainers/base:noble"
-    command: sleep infinity
-
-  postgres:
-    image: postgres:18-bookworm
-    restart: unless-stopped
-    volumes:
-      - postgres:/var/lib/postgres
-    environment:
-      POSTGRES_DB: my-project
-      POSTGRES_USER: vscode
-      POSTGRES_HOST_AUTH_METHOD: trust
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready"]
-      interval: 1s
-      timeout: 5s
-      retries: 10
-    ports:
-      - 5432
-
-volumes:
-  postgres:
-```
+DevContainer supports two ways to define environment variables: `containerEnv` and `remoteEnv`. **`devcontainer-env` works exclusively with `containerEnv`.** Variables in `containerEnv` are set when the container starts and apply to all processes. Variables in `remoteEnv` are set specifically for the VS Code server process and its sub-processes (terminals, tasks) — they can be updated without rebuilding the container but do not apply to background daemons. Use `containerEnv` for any variables you want accessible on the host (connection strings, API endpoints, service URLs).
 
 ### Port Mapping
 
