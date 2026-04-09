@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/devcontainer-env/devcontainer-env/compare/v0.1.0...v0.2.0) (2026-04-09)
+
+
+### Features
+
+* auto-detect export format from $SHELL environment variable ([23849c9](https://github.com/devcontainer-env/devcontainer-env/commit/23849c95ae06496b1da8e8460bf931c88bc11326))
+
 ## 0.1.0 (2026-04-09)
 
 
