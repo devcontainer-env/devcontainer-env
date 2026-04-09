@@ -1,6 +1,8 @@
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use core::fmt::Display;
+use std::env;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
 /// Program is the main entry point for the devcontainer-env CLI.
 #[derive(Debug, Parser)]
@@ -88,6 +90,18 @@ pub enum ExportFormat {
     Json,
 }
 
+impl FromStr for ExportFormat {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "bash" => Ok(Self::Bash),
+            "json" => Ok(Self::Json),
+            _ => Err(format!("unknown export format: {}", s)),
+        }
+    }
+}
+
 impl Display for ExportFormat {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -105,8 +119,24 @@ pub struct ExportCommandArgs {
     pub parent: ProgramArgs,
 
     /// Output format for the exported environment variables.
-    #[arg(help = "Output format.", default_value_t = ExportFormat::Bash, long, short)]
-    pub format: ExportFormat,
+    /// Auto-detected from $SHELL if not provided.
+    #[arg(help = "Output format (auto-detected from $SHELL if not provided).", long, short)]
+    pub format: Option<ExportFormat>,
+}
+
+impl ExportCommandArgs {
+    /// Get the export format, using $SHELL detection if not explicitly provided.
+    pub fn export_format(&self) -> ExportFormat {
+        self.format.unwrap_or_else(|| {
+            let shell_path = env::var("SHELL").unwrap_or_default();
+            let shell_name = Path::new(&shell_path)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("bash");
+
+            <ExportFormat as FromStr>::from_str(shell_name).unwrap_or(ExportFormat::Bash)
+        })
+    }
 }
 
 /// ExecCommandArgs defines the arguments for the ExecCommand.

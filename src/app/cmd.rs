@@ -24,7 +24,7 @@ impl ExportCommand {
         let workspace = self.client.get_workspace(params).await?;
 
         // Export the workspace
-        match args.format {
+        match args.export_format() {
             ExportFormat::Bash => {
                 for entry in workspace.environment.variables {
                     writeln!(self.writer, "export {}={}", entry.key, entry.value)?;
@@ -184,7 +184,7 @@ mod tests {
 
         cmd.execute(&ExportCommandArgs {
             parent: ProgramArgs::default(),
-            format: ExportFormat::Bash,
+            format: Some(ExportFormat::Bash),
         })
         .await?;
 
@@ -204,7 +204,7 @@ mod tests {
 
         cmd.execute(&ExportCommandArgs {
             parent: ProgramArgs::default(),
-            format: ExportFormat::Json,
+            format: Some(ExportFormat::Json),
         })
         .await?;
 
@@ -224,7 +224,7 @@ mod tests {
         let result = cmd
             .execute(&ExportCommandArgs {
                 parent: ProgramArgs::default(),
-                format: ExportFormat::Json,
+                format: Some(ExportFormat::Json),
             })
             .await;
 
