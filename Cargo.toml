@@ -2,6 +2,12 @@
 name = "devcontainer-env"
 version = "0.1.0"
 edition = "2021"
+description = "Bridge devcontainers and the host environment — run host commands with devcontainer service environments and automatically rewrite container service URLs to host ports"
+license = "MIT"
+license-file = "LICENSE"
+documentation = "https://github.com/devcontainer-env/devcontainer-env"
+homepage = "https://github.com/devcontainer-env/devcontainer-env"
+repository = "https://github.com/devcontainer-env/devcontainer-env"
 
 [dependencies]
 anyhow = "1.0.102"
