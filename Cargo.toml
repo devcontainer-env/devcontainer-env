@@ -1,6 +1,6 @@
 [package]
 name = "devcontainer-env"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Bridge devcontainers and the host environment — run host commands with devcontainer service environments and automatically rewrite container service URLs to host ports"
 license = "MIT"
