@@ -11,22 +11,6 @@
 eval "$(devcontainer-env export)"
 ```
 
-## Requirements
-
-- [Rust](https://www.rust-lang.org/) 1.70+ (`rustc`, `cargo`)
-
-**macOS (Homebrew):**
-
-```bash
-brew install rust
-```
-
-**Nix:**
-
-```bash
-nix profile install nixpkgs#rust
-```
-
 ## Installation
 
 ### Cargo (Crates.io)
