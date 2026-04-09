@@ -1,8 +1,7 @@
 {
   "packages": {
     ".": {
-      "release-type": "rust",
-      "changelog-path": "CHANGELOG.md"
+      "release-type": "rust"
     }
   }
 }
