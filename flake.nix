@@ -22,15 +22,15 @@
           src = pkgs.lib.cleanSource ./.;
           doCheck = false;
           meta = with pkgs.lib; {
-            description = "direnv that bridges devcontainers and the host environment";
-            homepage = "https://github.com/devcontainer-env/devcontainer-env";
+            inherit (manifest) description;
+            inherit (manifest) homepage;
             license = licenses.mit;
             mainProgram = manifest.name;
           };
         };
 
         devShells.default = pkgs.mkShell {
-          name = "devcontainer-env";
+          inherit (manifest) name;
           packages = with pkgs; [
             cargo
             clippy
