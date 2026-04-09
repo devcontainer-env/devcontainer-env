@@ -60,7 +60,7 @@ jobs:
 
   publish-crate:
     needs: release-please
-    if: ${{ needs.release-please.outputs.release_created }}
+    if: false
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
