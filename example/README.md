@@ -14,14 +14,14 @@ This directory demonstrates a complete, working devcontainer setup integrated wi
   - `postgres` service with proper health checks and port mapping
   - Uses dynamic port mapping (`ports: [5432]`) so multiple projects don't conflict
 
-- **[`flake.nix`](./flake.nix) / [`flake.lock`](./flake.lock)** — Nix flake showing how to:
-  - Consume `devcontainer-env` from the main repository
-  - Set up a development shell that automatically exports container environment variables
-
 - **[`.github/workflows/ci.yml`](./.github/workflows/ci.yml)** — GitHub Actions workflow demonstrating:
   - Starting the DevContainer in CI with [`devcontainer-env/devcontainer-ci`](https://github.com/devcontainer-env/devcontainer-ci) action
   - Setting up Nix and caching
   - Running tests within `nix develop` with exported environment variables available
+
+- **[`flake.nix`](./flake.nix) / [`flake.lock`](./flake.lock)** — Nix flake showing how to:
+  - Consume `devcontainer-env` from the main repository
+  - Set up a development shell that automatically exports container environment variables
 
 ## How `nix develop` Works
 
