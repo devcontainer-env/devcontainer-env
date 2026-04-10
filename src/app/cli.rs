@@ -50,7 +50,8 @@ pub enum ProgramCommand {
     #[command(
         name = "inspect",
         about = "Inspect and display the devcontainer environment configuration and service port mappings.",
-        long_about = "Parse the devcontainer.json configuration and print all resolved environment variables and forwarded service port mappings in the requested format."
+        long_about = "Parse the devcontainer.json configuration and print all resolved environment variables and forwarded service port mappings in the requested format.",
+        next_display_order = 1
     )]
     Inspect(InspectCommandArgs),
 
@@ -58,7 +59,8 @@ pub enum ProgramCommand {
     #[command(
         name = "export",
         about = "Export devcontainer service environment variables with container URLs rewritten to host ports.",
-        long_about = "Resolve the devcontainer service environment and emit shell-ready export statements (or JSON) with every container service URL rewritten to the corresponding forwarded host port."
+        long_about = "Resolve the devcontainer service environment and emit shell-ready export statements (or JSON) with every container service URL rewritten to the corresponding forwarded host port.",
+        next_display_order = 2
     )]
     Export(ExportCommandArgs),
 
@@ -66,7 +68,8 @@ pub enum ProgramCommand {
     #[command(
         name = "exec",
         about = "Execute a host command with the devcontainer service environment applied, rewriting container URLs to host ports.",
-        long_about = "Inject the resolved devcontainer service environment—rewriting container URLs to host ports—into the current process environment, then exec the given command so it inherits that environment."
+        long_about = "Inject the resolved devcontainer service environment—rewriting container URLs to host ports—into the current process environment, then exec the given command so it inherits that environment.",
+        next_display_order = 3
     )]
     Exec(ExecCommandArgs),
 }

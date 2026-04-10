@@ -39,10 +39,10 @@ nix profile install github:devcontainer-env/devcontainer-env
 Usage: devcontainer-env <COMMAND>
 
 Commands:
-  export    Export environment variables as shell statements
-  exec      Execute command with devcontainer environment
-  inspect   Display parsed devcontainer configuration
-  help      Print help message
+  inspect  Inspect and display the devcontainer environment configuration and service port mappings.
+  export   Export devcontainer service environment variables with container URLs rewritten to host ports.
+  exec     Execute a host command with the devcontainer service environment applied, rewriting container URLs to host ports.
+  help     Print this message or the help of the given subcommand(s)
 
 Options:
   -h, --help     Print help
