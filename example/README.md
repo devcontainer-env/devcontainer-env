@@ -4,22 +4,22 @@ This directory demonstrates a complete, working devcontainer setup integrated wi
 
 ## What This Example Shows
 
-- **`.devcontainer/devcontainer.json`** — DevContainer configuration defining:
+- **[`.devcontainer/devcontainer.json`](./.devcontainer/devcontainer.json)** — DevContainer configuration defining:
   - Workspace service (base image)
   - PostgreSQL service for local development
   - **`containerEnv`** — Environment variables that `devcontainer-env` exports to the host (more on this below)
 
-- **`.devcontainer/docker-compose.yml`** — Docker Compose definition for services:
+- **[`.devcontainer/docker-compose.yml`](./.devcontainer/docker-compose.yml)** — Docker Compose definition for services:
   - `workspace` service running the development environment
   - `postgres` service with proper health checks and port mapping
   - Uses dynamic port mapping (`ports: [5432]`) so multiple projects don't conflict
 
-- **`flake.nix` / `flake.lock`** — Nix flake showing how to:
+- **[`flake.nix`](./flake.nix) / [`flake.lock`](./flake.lock)** — Nix flake showing how to:
   - Consume `devcontainer-env` from the main repository
   - Set up a development shell that automatically exports container environment variables
 
-- **`.github/ci.yml`** — GitHub Actions workflow demonstrating:
-  - Starting the DevContainer in CI with `devcontainer-env/devcontainer-ci` action
+- **[`.github/workflows/ci.yml`](./.github/workflows/ci.yml)** — GitHub Actions workflow demonstrating:
+  - Starting the DevContainer in CI with [`devcontainer-env/devcontainer-ci`](https://github.com/devcontainer-env/devcontainer-ci) action
   - Setting up Nix and caching
   - Running tests within `nix develop` with exported environment variables available
 
@@ -32,6 +32,7 @@ When you run `nix develop` in this directory:
 2. **Creates an isolated dev shell** — A shell environment is created with the packages defined in `devShells.default`
 
 3. **Runs the shellHook** — Before giving you the shell, it executes:
+
    ```bash
    eval "$(devcontainer-env export)"
    ```
