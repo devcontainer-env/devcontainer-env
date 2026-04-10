@@ -18,6 +18,11 @@ This directory demonstrates a complete, working devcontainer setup integrated wi
   - Consume `devcontainer-env` from the main repository
   - Set up a development shell that automatically exports container environment variables
 
+- **`.github/ci.yml`** — GitHub Actions workflow demonstrating:
+  - Starting the DevContainer in CI with `devcontainer-env/devcontainer-ci` action
+  - Setting up Nix and caching
+  - Running tests within `nix develop` with exported environment variables available
+
 ## How `nix develop` Works
 
 When you run `nix develop` in this directory:
