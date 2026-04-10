@@ -7,9 +7,7 @@
 [![Crate](https://img.shields.io/crates/v/devcontainer-env)](https://crates.io/crates/devcontainer-env)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-```bash
-eval "$(devcontainer-env export)"
-```
+![Demo](doc/tapes/output/demo.webp)
 
 ## Installation
 
