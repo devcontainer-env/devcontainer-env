@@ -75,7 +75,7 @@ jobs:
           mkdir -p release && install -m 0755 result/bin/devcontainer-env release/devcontainer-env-${{ matrix.nix_system }}
 
       - name: Upload Release Assets
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.release.outputs.tag_name }}
           files: release/devcontainer-env-${{ matrix.nix_system }}
