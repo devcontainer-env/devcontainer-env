@@ -2,7 +2,7 @@
 
 > Bridge devcontainers and the host environment — run host commands with devcontainer service environments and automatically rewrite container service URLs to host ports.
 
-[![CI](https://github.com/devcontainer-env/devcontainer-env/actions/workflows/test.yml/badge.svg)](https://github.com/devcontainer-env/devcontainer-env/actions/workflows/ci.yml)
+[![CI](https://github.com/devcontainer-env/devcontainer-env/actions/workflows/ci.yml/badge.svg)](https://github.com/devcontainer-env/devcontainer-env/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/devcontainer-env/devcontainer-env)](https://github.com/devcontainer-env/devcontainer-env/releases/latest)
 [![Crate](https://img.shields.io/crates/v/devcontainer-env)](https://crates.io/crates/devcontainer-env)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
