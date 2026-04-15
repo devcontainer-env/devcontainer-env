@@ -1,4 +1,4 @@
-name: Test
+name: CI
 
 permissions:
   contents: read
@@ -11,14 +11,14 @@ on:
     branches: [main]
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
       - name: Start DevContainer
-        uses: devcontainer-env/devcontainer-ci@main
+        uses: devcontainer-env/devcontainer-ci@v1
 
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v22
