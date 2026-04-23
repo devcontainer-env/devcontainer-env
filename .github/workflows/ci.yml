@@ -15,7 +15,7 @@ defaults:
     shell: bash
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -37,7 +37,7 @@ jobs:
         run: nix develop --command cargo test
 
   release:
-    needs: build
+    needs: test
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
@@ -60,7 +60,7 @@ jobs:
           config-file: .github/config/release-please-config.json
           target-branch: main
 
-  build-release:
+  build:
     needs: release
     if: ${{ needs.release.outputs.release_created }}
     strategy:
@@ -100,8 +100,8 @@ jobs:
           tag_name: ${{ needs.release.outputs.tag_name }}
           files: release/devcontainer-env-${{ matrix.nix_system }}
 
-  publish-crate:
-    needs: release
+  publish:
+    needs: [release, build]
     if: ${{ needs.release.outputs.release_created }}
     runs-on: ubuntu-latest
     permissions:
