@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/devcontainer-env/devcontainer-env/compare/v0.2.0...v0.2.1) (2026-04-23)
+
+
+### Bug Fixes
+
+* correct CI badge workflow filename ([08cc0eb](https://github.com/devcontainer-env/devcontainer-env/commit/08cc0eba8aff8b8ad93b9c1929610442e424c6f3))
+
 ## [0.2.0](https://github.com/devcontainer-env/devcontainer-env/compare/v0.1.0...v0.2.0) (2026-04-09)
 
 
