@@ -11,7 +11,11 @@ use clap::Parser;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let client = Box::new(Client::new()?);
+    let client: Box<dyn WorkspaceClient + Send + Sync> = if std::path::Path::new("/.dockerenv").exists() {
+        Box::new(Client::new_local())
+    } else {
+        Box::new(Client::new()?)
+    };
 
     let program = Program::parse();
     // Process the correct command
