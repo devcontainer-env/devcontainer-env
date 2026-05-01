@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/devcontainer-env/devcontainer-env/compare/v0.3.0...v0.3.1) (2026-05-01)
+
+
+### Bug Fixes
+
+* **ci:** remove blank lines and bump macos runner to macos-15 ([2288b33](https://github.com/devcontainer-env/devcontainer-env/commit/2288b3395146179f2a62b6d7a3a035c4309bb8c3))
+
 ## [0.3.0](https://github.com/devcontainer-env/devcontainer-env/compare/v0.2.0...v0.3.0) (2026-05-01)
 
 
