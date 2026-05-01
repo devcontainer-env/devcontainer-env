@@ -436,6 +436,27 @@ impl DockerClient for Docker {
     }
 }
 
+/// A no-op Docker client used when running inside a container.
+pub struct InDocker;
+
+#[async_trait]
+impl DockerClient for InDocker {
+    async fn inspect_container(
+        &self,
+        _name: &str,
+        _opts: Option<bollard::query_parameters::InspectContainerOptions>,
+    ) -> Result<bollard::plugin::ContainerInspectResponse> {
+        anyhow::bail!("inspect_container not supported in container")
+    }
+
+    async fn list_containers(
+        &self,
+        _opts: Option<bollard::query_parameters::ListContainersOptions>,
+    ) -> Result<Vec<bollard::plugin::ContainerSummary>> {
+        Ok(vec![])
+    }
+}
+
 /// Parameters for [`Client::get_workspace`].
 pub struct GetWorkspaceParam {
     /// Path to the devcontainer.json configuration file.
@@ -454,7 +475,7 @@ pub trait WorkspaceClient {
 
 /// Docker client for querying devcontainer workspace state via the OCI/Docker API.
 pub struct Client<D: DockerClient> {
-    client: D,
+    pub client: D,
 }
 
 impl Client<Docker> {
@@ -464,6 +485,13 @@ impl Client<Docker> {
     pub fn new() -> Result<Self> {
         let client = Docker::connect_with_socket_defaults()?;
         Ok(Self { client })
+    }
+}
+
+impl Client<InDocker> {
+    /// Creates a new [`Client`] that bypasses the Docker daemon.
+    pub fn new_local() -> Self {
+        Self { client: InDocker }
     }
 }
 
@@ -643,6 +671,23 @@ mod tests {
 
         assert_eq!(workspace.containers.len(), 1);
         assert_eq!(workspace.containers[0].names, vec!["devcontainer-app-1"]);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_workspace_local_returns_no_containers() -> Result<()> {
+        let (_temp_dir, folder, config) = create_test_fixture()?;
+
+        let client = Client::new_local();
+
+        let workspace = client
+            .get_workspace(&GetWorkspaceParam {
+                config,
+                folder,
+            })
+            .await?;
+
+        assert_eq!(workspace.containers.len(), 0);
         Ok(())
     }
 
