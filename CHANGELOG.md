@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/devcontainer-env/devcontainer-env/compare/v0.3.1...v0.3.2) (2026-05-04)
+
+
+### Bug Fixes
+
+* **github:** correct action versions in update.yml ([00cc3c3](https://github.com/devcontainer-env/devcontainer-env/commit/00cc3c32e0740879f765b48ec7f4b96119d87078))
+
 ## [0.3.1](https://github.com/devcontainer-env/devcontainer-env/compare/v0.3.0...v0.3.1) (2026-05-01)
 
 
