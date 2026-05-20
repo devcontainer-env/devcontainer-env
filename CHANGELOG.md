@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/devcontainer-env/devcontainer-env/compare/v0.3.2...v0.4.0) (2026-05-20)
+
+
+### Features
+
+* **devcontainer:** configure vscode terminal to use nix develop ([27ffa0a](https://github.com/devcontainer-env/devcontainer-env/commit/27ffa0a85376330641b4b3d7864e3d875577731f))
+
 ## [0.3.2](https://github.com/devcontainer-env/devcontainer-env/compare/v0.3.1...v0.3.2) (2026-05-04)
 
 
