@@ -16,5 +16,20 @@
       "extraNixConfig": "experimental-features = nix-command flakes"
     }
   },
-  "postCreateCommand": "sudo chown -R vscode:vscode /nix /home/vscode/.cache"
+  "postCreateCommand": "sudo chown -R vscode:vscode /nix /home/vscode/.cache",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "default",
+        "terminal.integrated.profiles.linux": {
+          "default": {
+            "path": "nix",
+            "args": [
+              "develop"
+            ]
+          }
+        }
+      }
+    }
+  }
 }
