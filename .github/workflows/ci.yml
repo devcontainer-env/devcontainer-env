@@ -20,7 +20,7 @@ jobs:
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v22
       - name: Setup Nix Cache
-        uses: DeterminateSystems/magic-nix-cache-action@v13
+        uses: DeterminateSystems/magic-nix-cache-action@v14
         with:
           use-flakehub: disabled
           use-gha-cache: enabled
@@ -70,7 +70,7 @@ jobs:
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v22
       - name: Setup Nix Cache
-        uses: DeterminateSystems/magic-nix-cache-action@v13
+        uses: DeterminateSystems/magic-nix-cache-action@v14
         with:
           use-flakehub: disabled
           use-gha-cache: enabled
@@ -98,7 +98,7 @@ jobs:
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v22
       - name: Setup Nix Cache
-        uses: DeterminateSystems/magic-nix-cache-action@v13
+        uses: DeterminateSystems/magic-nix-cache-action@v14
         with:
           use-flakehub: disabled
           use-gha-cache: enabled
