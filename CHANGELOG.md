@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/devcontainer-env/devcontainer-env/compare/v0.4.0...v0.4.1) (2026-09-23)
+
+
+### Bug Fixes
+
+* **oci:** resolve docker host from the active docker context ([#88](https://github.com/devcontainer-env/devcontainer-env/issues/88)) ([7dc56cc](https://github.com/devcontainer-env/devcontainer-env/commit/7dc56cc8413fb2053d8887113d2db92d94958592)), closes [#87](https://github.com/devcontainer-env/devcontainer-env/issues/87)
+
 ## [0.4.0](https://github.com/devcontainer-env/devcontainer-env/compare/v0.3.2...v0.4.0) (2026-05-20)
 
 
