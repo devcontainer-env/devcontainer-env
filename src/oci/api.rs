@@ -3,6 +3,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use bollard::Docker;
+use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -478,12 +479,90 @@ pub struct Client<D: DockerClient> {
     pub client: D,
 }
 
+/// Docker host used when no `DOCKER_HOST` or non-default docker context is configured.
+const DEFAULT_DOCKER_HOST: &str = "unix:///var/run/docker.sock";
+
+/// Subset of `$DOCKER_CONFIG/config.json` needed to find the active docker context.
+#[derive(serde::Deserialize)]
+struct DockerConfig {
+    #[serde(rename = "currentContext")]
+    current_context: Option<String>,
+}
+
+/// Subset of `$DOCKER_CONFIG/contexts/meta/<sha256>/meta.json`.
+#[derive(serde::Deserialize)]
+struct ContextMeta {
+    #[serde(rename = "Endpoints")]
+    endpoints: HashMap<String, ContextEndpoint>,
+}
+
+/// A single endpoint of a docker context.
+#[derive(serde::Deserialize)]
+struct ContextEndpoint {
+    #[serde(rename = "Host")]
+    host: String,
+}
+
+/// Resolves the Docker daemon host the same way the docker CLI does:
+/// `DOCKER_HOST` > `DOCKER_CONTEXT` > `currentContext` in `config.json` > default socket.
+fn resolve_docker_host(env: impl Fn(&str) -> Option<String>, config_dir: &Path) -> Result<String> {
+    if let Some(host) = env("DOCKER_HOST").filter(|h| !h.is_empty()) {
+        return Ok(host);
+    }
+
+    let context = match env("DOCKER_CONTEXT").filter(|c| !c.is_empty()) {
+        Some(context) => Some(context),
+        None => match std::fs::read(config_dir.join("config.json")) {
+            Ok(data) => serde_json::from_slice::<DockerConfig>(&data)?.current_context,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => return Err(e.into()),
+        },
+    };
+
+    let context = match context.as_deref() {
+        None | Some("") | Some("default") => return Ok(DEFAULT_DOCKER_HOST.to_string()),
+        Some(context) => context,
+    };
+
+    let digest: String = Sha256::digest(context.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    let path = config_dir
+        .join("contexts")
+        .join("meta")
+        .join(digest)
+        .join("meta.json");
+    let data = std::fs::read(&path).map_err(|e| {
+        anyhow::anyhow!(
+            "docker context {context:?} not found at {}: {e}",
+            path.display()
+        )
+    })?;
+    let meta: ContextMeta = serde_json::from_slice(&data)?;
+
+    meta.endpoints
+        .get("docker")
+        .map(|e| e.host.clone())
+        .ok_or_else(|| anyhow::anyhow!("docker context {context:?} has no docker endpoint"))
+}
+
+/// Returns `$DOCKER_CONFIG`, falling back to `~/.docker`.
+fn docker_config_dir() -> PathBuf {
+    std::env::var_os("DOCKER_CONFIG")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".docker")
+        })
+}
+
 impl Client<Docker> {
-    /// Creates a new [`Client`] connected via the default Docker socket.
+    /// Creates a new [`Client`] connected to the Docker host of the active docker context.
     ///
-    /// Returns an error if the Docker socket cannot be reached.
+    /// Returns an error if the Docker host cannot be resolved or connected to.
     pub fn new() -> Result<Self> {
-        let client = Docker::connect_with_socket_defaults()?;
+        let host = resolve_docker_host(|k| std::env::var(k).ok(), &docker_config_dir())?;
+        let client = Docker::connect_with_host(&host)?;
         Ok(Self { client })
     }
 }
@@ -1046,5 +1125,102 @@ mod tests {
 
         let container = Container::from(response);
         assert!(container.names.contains(&"main".to_string()));
+    }
+
+    /// sha256("orbstack"), as computed by the docker CLI for its context metadata directory.
+    const ORBSTACK_DIGEST: &str =
+        "2d89b732b01a00a2d1675ed3cee9fd0f965daadf90603c989dd3afd4569c6896";
+    const ORBSTACK_HOST: &str = "unix:///Users/test/.orbstack/run/docker.sock";
+
+    /// Creates a temporary docker config dir with an `orbstack` context and optional `config.json`.
+    fn create_docker_config(config: Option<&str>) -> Result<TempDir> {
+        let temp_dir = TempDir::new()?;
+        let meta_dir = temp_dir
+            .path()
+            .join("contexts")
+            .join("meta")
+            .join(ORBSTACK_DIGEST);
+        std::fs::create_dir_all(&meta_dir)?;
+        std::fs::write(
+            meta_dir.join("meta.json"),
+            format!(
+                r#"{{"Name":"orbstack","Metadata":{{}},"Endpoints":{{"docker":{{"Host":"{ORBSTACK_HOST}","SkipTLSVerify":false}}}}}}"#
+            ),
+        )?;
+        if let Some(config) = config {
+            std::fs::write(temp_dir.path().join("config.json"), config)?;
+        }
+        Ok(temp_dir)
+    }
+
+    /// Builds an environment lookup from `(key, value)` pairs.
+    fn fake_env(vars: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {
+        let vars: HashMap<String, String> = vars
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        move |k| vars.get(k).cloned()
+    }
+
+    #[test]
+    fn resolve_docker_host_prefers_docker_host_env() -> Result<()> {
+        let dir = create_docker_config(Some(r#"{"currentContext":"orbstack"}"#))?;
+        let env = fake_env(&[
+            ("DOCKER_HOST", "tcp://localhost:2375"),
+            ("DOCKER_CONTEXT", "orbstack"),
+        ]);
+        assert_eq!(
+            resolve_docker_host(env, dir.path())?,
+            "tcp://localhost:2375"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn resolve_docker_host_prefers_docker_context_env_over_config() -> Result<()> {
+        let dir = create_docker_config(Some(r#"{"currentContext":"default"}"#))?;
+        let env = fake_env(&[("DOCKER_CONTEXT", "orbstack")]);
+        assert_eq!(resolve_docker_host(env, dir.path())?, ORBSTACK_HOST);
+        Ok(())
+    }
+
+    #[test]
+    fn resolve_docker_host_uses_current_context_from_config() -> Result<()> {
+        let dir = create_docker_config(Some(r#"{"auths":{},"currentContext":"orbstack"}"#))?;
+        assert_eq!(
+            resolve_docker_host(fake_env(&[]), dir.path())?,
+            ORBSTACK_HOST
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn resolve_docker_host_defaults_for_default_context() -> Result<()> {
+        let dir = create_docker_config(Some(r#"{"currentContext":"default"}"#))?;
+        assert_eq!(
+            resolve_docker_host(fake_env(&[]), dir.path())?,
+            DEFAULT_DOCKER_HOST
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn resolve_docker_host_defaults_without_config() -> Result<()> {
+        let dir = create_docker_config(None)?;
+        assert_eq!(
+            resolve_docker_host(fake_env(&[]), dir.path())?,
+            DEFAULT_DOCKER_HOST
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn resolve_docker_host_errors_for_unknown_context() -> Result<()> {
+        let dir = create_docker_config(Some(r#"{"currentContext":"missing"}"#))?;
+        let err = resolve_docker_host(fake_env(&[]), dir.path()).unwrap_err();
+        assert!(err
+            .to_string()
+            .contains(r#"docker context "missing" not found"#));
+        Ok(())
     }
 }
