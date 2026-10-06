@@ -1,11 +1,11 @@
 mod app;
-mod oci;
+mod docker;
 
 use std::error::Error;
 
 use crate::app::args::*;
 use crate::app::exec::*;
-use crate::oci::api::*;
+use crate::docker::api::*;
 
 use clap::Parser;
 
