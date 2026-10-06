@@ -27,10 +27,6 @@ jobs:
       - name: Run Tests
         run: nix develop --command cargo test
 
-      # Release assets are built without Nix; this keeps the flake package working for Nix users
-      - name: Build Nix Package
-        run: nix build .
-
   release:
     needs: test
     if: github.event_name == 'push'
