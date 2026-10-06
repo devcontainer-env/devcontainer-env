@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/devcontainer-env/devcontainer-env/compare/v0.4.1...v0.4.2) (2026-10-06)
+
+
+### Bug Fixes
+
+* build static release binaries and handle --version without docker ([#95](https://github.com/devcontainer-env/devcontainer-env/issues/95)) ([5f2c275](https://github.com/devcontainer-env/devcontainer-env/commit/5f2c2759961676e2a778d7b1eb74414322115867))
+
 ## [0.4.1](https://github.com/devcontainer-env/devcontainer-env/compare/v0.4.0...v0.4.1) (2026-09-23)
 
 
