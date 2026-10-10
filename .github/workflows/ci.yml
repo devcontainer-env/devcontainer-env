@@ -105,7 +105,10 @@ jobs:
           file "$bin"
           if [ "$RUNNER_OS" = macOS ]; then
             otool -L "$bin"
-            ! otool -L "$bin" | grep -q /nix/store
+            if otool -L "$bin" | grep -q /nix/store; then
+              echo "::error::$bin links against /nix/store"
+              exit 1
+            fi
           else
             file "$bin" | grep -Eq 'static(ally|-pie)? linked'
           fi
