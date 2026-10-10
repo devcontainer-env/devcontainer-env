@@ -56,6 +56,28 @@ fn inspect_fails_when_config_missing() {
 }
 
 #[test]
+fn inspect_finds_config_from_a_subfolder() {
+    devcontainer_env()
+        .current_dir(devcontainer_working_dir().join("src"))
+        .args(["inspect"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("No running devcontainers found"));
+}
+
+#[test]
+fn inspect_with_workspace_folder_skips_parent_folders() {
+    devcontainer_env()
+        .current_dir(devcontainer_working_dir().join("src"))
+        .args(["inspect", "--workspace-folder", "."])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "src/.devcontainer/devcontainer.json not found:",
+        ));
+}
+
+#[test]
 fn export_writes_bash_statements() {
     devcontainer_env()
         .args(["export", "--format", "bash"])

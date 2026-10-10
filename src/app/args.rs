@@ -21,25 +21,30 @@ pub struct Program {
 /// ProgramArgs holds the shared global flags available to every subcommand.
 #[derive(Debug, Args)]
 pub struct ProgramArgs {
-    /// Path to the devcontainer.json configuration file. A relative path is
-    /// looked up in the workspace folder and then in each of its parents.
+    /// Path to the devcontainer.json configuration file. Without
+    /// `--workspace-folder`, a relative path is looked up in the current folder
+    /// and then in each of its parents.
     #[arg(
-        help = "devcontainer.json path; a relative one is looked up in the workspace folder and its parents.",
+        help = "devcontainer.json path; without --workspace-folder, a relative one is looked up in the current folder and its parents.",
         default_value = ".devcontainer/devcontainer.json",
         long
     )]
     pub config: PathBuf,
 
-    /// Path to the workspace folder containing the devcontainer.
-    #[arg(help = "Workspace folder path.", default_value = ".", long)]
-    pub workspace_folder: PathBuf,
+    /// Path to the workspace folder containing the devcontainer. When omitted,
+    /// the nearest folder holding the config, from the current one up, is used.
+    #[arg(
+        help = "Workspace folder path [default: nearest folder holding the config].",
+        long
+    )]
+    pub workspace_folder: Option<PathBuf>,
 }
 
 impl Default for ProgramArgs {
     fn default() -> Self {
         Self {
             config: Path::new(".devcontainer/devcontainer.json").into(),
-            workspace_folder: Path::new(".").into(),
+            workspace_folder: None,
         }
     }
 }
@@ -178,7 +183,7 @@ mod tests {
     #[test]
     fn program_args_default_folder_and_config() {
         let args = ProgramArgs::default();
-        assert_eq!(args.workspace_folder, Path::new("."));
+        assert_eq!(args.workspace_folder, None);
         assert_eq!(args.config, Path::new(".devcontainer/devcontainer.json"));
     }
 }
