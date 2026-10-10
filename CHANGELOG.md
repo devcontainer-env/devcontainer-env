@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.3](https://github.com/devcontainer-env/devcontainer-env/compare/v0.4.2...v0.4.3) (2026-10-10)
+
+
+### Bug Fixes
+
+* find the devcontainer config in parent folders ([#97](https://github.com/devcontainer-env/devcontainer-env/issues/97)) ([069769a](https://github.com/devcontainer-env/devcontainer-env/commit/069769a090d0f622068b938481e756aacb11940e))
+
 ## [0.4.2](https://github.com/devcontainer-env/devcontainer-env/compare/v0.4.1...v0.4.2) (2026-10-06)
 
 
