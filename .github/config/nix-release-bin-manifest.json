@@ -1,0 +1,21 @@
+{
+  "assets": {
+    "aarch64-darwin": {
+      "hash": "sha256-v90MYxaujoCcgwc8FqOrGPPMHKO2FGpp/6/s0ak/ND8=",
+      "url": "https://github.com/devcontainer-env/devcontainer-env/releases/download/v0.4.2/devcontainer-env-aarch64-apple-darwin"
+    },
+    "aarch64-linux": {
+      "hash": "sha256-HGi7PWd+DrAYfF56G6JTGz4HQgRj+XdvIrH5mO5tw9M=",
+      "url": "https://github.com/devcontainer-env/devcontainer-env/releases/download/v0.4.2/devcontainer-env-aarch64-unknown-linux-musl"
+    },
+    "x86_64-darwin": {
+      "hash": "sha256-nXuKB9F3SASRDt3TPvczrnULJyK2Km26MNaimxzztRI=",
+      "url": "https://github.com/devcontainer-env/devcontainer-env/releases/download/v0.4.2/devcontainer-env-x86_64-apple-darwin"
+    },
+    "x86_64-linux": {
+      "hash": "sha256-dABykYe2yaWMESu2bvyi9i66b3WKCWJbOGPKBL7PVec=",
+      "url": "https://github.com/devcontainer-env/devcontainer-env/releases/download/v0.4.2/devcontainer-env-x86_64-unknown-linux-musl"
+    }
+  },
+  "version": "0.4.2"
+}

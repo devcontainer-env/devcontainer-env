@@ -18,6 +18,29 @@
         "type": "github"
       }
     },
+    "nix-release-bin": {
+      "inputs": {
+        "flake-utils": [
+          "flake-utils"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1791629748,
+        "narHash": "sha256-61NsuFsGBQZ156hk1bJsfsP2/bI2Bq+dLtZ9IWAfGr0=",
+        "owner": "nixos-contrib",
+        "repo": "nix-release-bin",
+        "rev": "20b01d26b42f3b4f5eb6c8a73608f63249783ee8",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nixos-contrib",
+        "repo": "nix-release-bin",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1791011291,
@@ -37,6 +60,7 @@
     "root": {
       "inputs": {
         "flake-utils": "flake-utils",
+        "nix-release-bin": "nix-release-bin",
         "nixpkgs": "nixpkgs",
         "rust-overlay": "rust-overlay"
       }
