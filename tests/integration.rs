@@ -50,7 +50,9 @@ fn inspect_fails_when_config_missing() {
         .args(["inspect"])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("No such file or directory"));
+        .stderr(predicate::str::contains(
+            "devcontainer config .devcontainer/devcontainer.json not found in",
+        ));
 }
 
 #[test]

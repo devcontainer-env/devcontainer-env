@@ -21,9 +21,10 @@ pub struct Program {
 /// ProgramArgs holds the shared global flags available to every subcommand.
 #[derive(Debug, Args)]
 pub struct ProgramArgs {
-    /// Path to the devcontainer.json configuration file.
+    /// Path to the devcontainer.json configuration file. A relative path is
+    /// looked up in the workspace folder and then in each of its parents.
     #[arg(
-        help = "devcontainer.json path.",
+        help = "devcontainer.json path; a relative one is looked up in the workspace folder and its parents.",
         default_value = ".devcontainer/devcontainer.json",
         long
     )]
