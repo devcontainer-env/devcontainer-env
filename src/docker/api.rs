@@ -464,6 +464,8 @@ pub struct GetWorkspaceParam {
     pub config: PathBuf,
     /// Path to the workspace root folder.
     pub folder: PathBuf,
+    /// Whether a relative config missing from `folder` is looked up in its parents.
+    pub search_parents: bool,
 }
 
 /// High-level client for resolving a devcontainer workspace from its configuration.
@@ -581,17 +583,42 @@ impl<D: DockerClient + Send + Sync> WorkspaceClient for Client<D> {
     /// Canonicalizes the workspace folder and config paths, then queries the
     /// Docker daemon for containers and environment variables.
     ///
+    /// With `search_parents`, a relative config is looked up in the workspace
+    /// folder and then in each of its parents, as git finds a repository's
+    /// root: the nearest folder holding it is the workspace. That is what lets
+    /// a shell hook run from a subdirectory -- `nix develop` entered below the
+    /// repository root.
+    ///
     /// # Errors
-    /// Returns an error if any path cannot be canonicalized or if the Docker
-    /// daemon returns an error.
+    /// Returns an error if the workspace folder does not exist, if the config
+    /// is not found, or if the Docker daemon returns an error.
     async fn get_workspace(&self, args: &GetWorkspaceParam) -> Result<Workspace> {
-        let folder = args.folder.canonicalize()?;
-        let config = if args.config.is_relative() {
-            folder.join(&args.config)
+        let start = args.folder.canonicalize().map_err(|e| {
+            anyhow::anyhow!("workspace folder {} not found: {e}", args.folder.display())
+        })?;
+        let (folder, config) = if args.config.is_absolute() {
+            (start, args.config.clone())
+        } else if !args.search_parents {
+            let config = start.join(&args.config);
+            (start, config)
         } else {
-            args.config.clone()
+            let folder = start
+                .ancestors()
+                .find(|dir| dir.join(&args.config).is_file())
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "devcontainer config {} not found in {} or any parent folder",
+                        args.config.display(),
+                        start.display()
+                    )
+                })?
+                .to_path_buf();
+            let config = folder.join(&args.config);
+            (folder, config)
         };
-        let config = config.canonicalize()?;
+        let config = config.canonicalize().map_err(|e| {
+            anyhow::anyhow!("devcontainer config {} not found: {e}", config.display())
+        })?;
 
         let config_dir = config
             .parent()
@@ -745,6 +772,7 @@ mod tests {
             .get_workspace(&GetWorkspaceParam {
                 config,
                 folder,
+                search_parents: false,
             })
             .await?;
 
@@ -763,10 +791,104 @@ mod tests {
             .get_workspace(&GetWorkspaceParam {
                 config,
                 folder,
+                search_parents: false,
             })
             .await?;
 
         assert_eq!(workspace.containers.len(), 0);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_workspace_finds_config_in_a_parent_folder() -> Result<()> {
+        let (temp_dir, folder, config) = create_test_fixture()?;
+        let subfolder = folder.join("crates").join("sdk");
+        std::fs::create_dir_all(&subfolder)?;
+
+        let client = Client::new_local();
+
+        let workspace = client
+            .get_workspace(&GetWorkspaceParam {
+                config: ".devcontainer/devcontainer.json".into(),
+                folder: subfolder,
+                search_parents: true,
+            })
+            .await?;
+
+        assert_eq!(workspace.folder, temp_dir.path().canonicalize()?);
+        assert_eq!(workspace.config, config.canonicalize()?);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_workspace_skips_parent_folders_unless_asked() -> Result<()> {
+        let (_temp_dir, folder, _config) = create_test_fixture()?;
+        let subfolder = folder.join("crates").join("sdk");
+        std::fs::create_dir_all(&subfolder)?;
+
+        let client = Client::new_local();
+
+        let result = client
+            .get_workspace(&GetWorkspaceParam {
+                config: ".devcontainer/devcontainer.json".into(),
+                folder: subfolder.clone(),
+                search_parents: false,
+            })
+            .await;
+
+        assert!(result.unwrap_err().to_string().starts_with(&format!(
+            "devcontainer config {} not found:",
+            subfolder
+                .canonicalize()?
+                .join(".devcontainer/devcontainer.json")
+                .display()
+        )));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_workspace_fails_when_no_parent_folder_has_config() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+
+        let client = Client::new_local();
+
+        let result = client
+            .get_workspace(&GetWorkspaceParam {
+                config: ".devcontainer/devcontainer.json".into(),
+                folder: temp_dir.path().into(),
+                search_parents: true,
+            })
+            .await;
+
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            format!(
+                "devcontainer config .devcontainer/devcontainer.json not found in {} or any parent folder",
+                temp_dir.path().canonicalize()?.display()
+            )
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_workspace_names_a_missing_absolute_config() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let config = temp_dir.path().join("devcontainer.json");
+
+        let client = Client::new_local();
+
+        let result = client
+            .get_workspace(&GetWorkspaceParam {
+                config: config.clone(),
+                folder: temp_dir.path().into(),
+                search_parents: true,
+            })
+            .await;
+
+        assert!(result.unwrap_err().to_string().starts_with(&format!(
+            "devcontainer config {} not found:",
+            config.display()
+        )));
         Ok(())
     }
 
@@ -782,6 +904,7 @@ mod tests {
             .get_workspace(&GetWorkspaceParam {
                 config,
                 folder,
+                search_parents: false,
             })
             .await;
 
@@ -802,6 +925,7 @@ mod tests {
             .get_workspace(&GetWorkspaceParam {
                 config,
                 folder,
+                search_parents: false,
             })
             .await?;
 
@@ -1081,6 +1205,7 @@ mod tests {
             .get_workspace(&GetWorkspaceParam {
                 config,
                 folder,
+                search_parents: false,
             })
             .await;
 

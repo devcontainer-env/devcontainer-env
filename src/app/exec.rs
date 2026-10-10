@@ -5,6 +5,17 @@ use std::collections::{HashMap, VecDeque};
 use std::io::Write;
 use std::process::{Command, Stdio};
 
+impl From<&ProgramArgs> for GetWorkspaceParam {
+    /// Looks for the config in parent folders only when no workspace folder is given.
+    fn from(args: &ProgramArgs) -> Self {
+        Self {
+            config: args.config.clone(),
+            folder: args.workspace_folder.clone().unwrap_or_else(|| ".".into()),
+            search_parents: args.workspace_folder.is_none(),
+        }
+    }
+}
+
 /// Export devcontainer service environment variables with container URLs rewritten to host ports.
 pub struct ExportCommand {
     /// Writer used to output the exported environment variables.
@@ -17,10 +28,7 @@ impl ExportCommand {
     /// Execute the ExportCommand with the provided arguments.
     pub async fn execute(&mut self, args: &ExportCommandArgs) -> Result<()> {
         // Get the workspace
-        let params = &GetWorkspaceParam {
-            config: args.parent.config.clone(),
-            folder: args.parent.workspace_folder.clone(),
-        };
+        let params = &GetWorkspaceParam::from(&args.parent);
         let workspace = self.client.get_workspace(params).await?;
 
         // Export the workspace
@@ -48,10 +56,7 @@ impl ExecCommand {
     /// Execute the ExecCommand with the provided arguments.
     pub async fn execute(&mut self, args: &ExecCommandArgs) -> Result<()> {
         // Get the workspace
-        let params = &GetWorkspaceParam {
-            config: args.parent.config.clone(),
-            folder: args.parent.workspace_folder.clone(),
-        };
+        let params = &GetWorkspaceParam::from(&args.parent);
         let workspace = self.client.get_workspace(params).await?;
         let mut arguments = VecDeque::from(args.command.clone());
         let environment: HashMap<String, String> = HashMap::from(workspace.environment);
@@ -91,10 +96,7 @@ impl InspectCommand {
     /// Execute the ExecCommand with the provided arguments.
     pub async fn execute(&mut self, args: &InspectCommandArgs) -> Result<()> {
         // Get the workspace
-        let params = &GetWorkspaceParam {
-            config: args.parent.config.clone(),
-            folder: args.parent.workspace_folder.clone(),
-        };
+        let params = &GetWorkspaceParam::from(&args.parent);
         let workspace = self.client.get_workspace(params).await?;
 
         if workspace.containers.is_empty() {
