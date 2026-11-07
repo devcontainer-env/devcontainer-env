@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.0](https://github.com/devcontainer-env/devcontainer-env/compare/v0.4.3...v0.5.0) (2026-11-07)
+
+
+### Features
+
+* **ci:** push the Nix build to Cachix, and merge with the App token ([#111](https://github.com/devcontainer-env/devcontainer-env/issues/111)) ([84e4190](https://github.com/devcontainer-env/devcontainer-env/commit/84e41903e66f0dcdf3540eba90ac616c9fceb5ee))
+
+
+### Bug Fixes
+
+* **ci:** merge with the App token so main gets its CI run ([#113](https://github.com/devcontainer-env/devcontainer-env/issues/113)) ([6075504](https://github.com/devcontainer-env/devcontainer-env/commit/6075504067cf0cdf0bdb443d5710c83da21b6685))
+
 ## [0.4.3](https://github.com/devcontainer-env/devcontainer-env/compare/v0.4.2...v0.4.3) (2026-10-10)
 
 
